@@ -1,0 +1,10 @@
+Name: BioSig
+Version: 3.9.0
+Date: 2025-03-27
+Author: Alois Schloegl <alois.schloegl@gmail.com>
+Maintainer: Alois Schloegl
+Title: BioSig
+Description: A software library for biomedical signal processing.
+Depends: octave (> 4.0.0),
+License: GPL version 3 or later
+Url: http://biosig.sf.net

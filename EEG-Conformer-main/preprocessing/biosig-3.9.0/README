@@ -1,0 +1,253 @@
+Introduction:
+=============
+
+The aim of this repository is providing a software library for biomedical signal processing.
+Biosig consists of the following parts:
+(1) "Biosig for Octave and Matlab" and
+(2) "Biosig for C/C++" provides libbiosig, and several command line tools
+(3)  binding of libbiosig to the following programming languages:
+      Python, Mathematica, Matlab/Octave, Java, and R.
+
+== Installation ==
+
+The build and installation is quite flexible, and will adapt to your configuration. If numpy/libpython-dev
+is available, the biosig language binding for python will be installed. The same is try
+for Octave, Matlab, Mathematica, R, and Java.
+
+As a quick start, you can do:
+   wget https://sourceforge.net/projects/biosig/files/BioSig%20for%20C_C%2B%2B/src/biosig-2.6.1.src.tar.xz
+   tar xvf biosig-2.6.1.src.tar.xz
+   cd biosig-2.6.1
+   ./configure && make -j
+   sudo make install
+
+--- Required packages at build time ---
+
+    Debian (and derivatives)
+	apt-get install autoconf gawk libb64-dev tinyxml-dev libdcmtk-dev suitesparse-dev
+
+    MacOSX/homebrew
+	brew install biosig
+
+    Windows binaries: MSVC is not supported, some gnu compiler for windows (e.g. mingw, cygwin, wsl) is needed.
+    We are using this mingw-cross-compiler environment (MXE) on some linux host.
+	git clone https://github.com/schloegl/mxe
+	cd mxe
+	make biosig
+
+
+--- Optional/Recommended packages at compile time ---
+
+    Debian (and derivatives)
+    apt-get install \
+	gawk \
+	libb64-dev tinyxml-dev libdcmtk-dev \
+	liboctave-dev octave \
+	python3-numpy \
+	python-setuptools python3-setuptools \
+	libpython3-dev \
+	R texlive-fonts-extra \
+	default-jdk
+
+    MacOSX/homebrew
+        brew install biosig
+
+--- Recommended packages at runtime ---
+    apt-get install \
+	libb64 tinyxml libdcmtk{14..17} \
+	python-numpy python3-numpy \
+	R default-jre \
+	octave octave-tsa octave-nan octave-signal octave-statistics
+
+--- msys2
+    pacman -Su
+    libiconv libiconv-dev unzip gcc autoconf make
+    mingw-w64-x86_64-python-numpy
+    mingw-w64-x86_64-python-setuptools
+
+
+Compile Biosig from git (without installing):
+
+   WD=$HOME/src/biosig-code   # working directory, adapt to your needs
+   git clone https://git.code.sf.net/p/biosig/code $WD
+   cd $WD
+   autoconf || autoreconf -fi
+   ./configure
+   make
+   export PATH=$WD/biosig4c++:$PATH
+   export LD_LIBRARY_PATH=$WD/biosig4c++:$LD_LIBRARY_PATH
+   # make install      # (optional) installs by default into /usr/local/
+
+
+Installing Biosig from source is as simple as, and will install by default into
+
+   ./configure && make -j && sudo make install
+
+
+This should install libbiosig and als biosig command line tools like
+
+    save2gdf
+    biosig_fhir
+    physicalunits
+    biosig2gdf
+
+
+Depending on your software configuration, also language bindings to
+   Matlab, Octave, Python, Java, R, Mathematica
+might be installed. If you have python/numpy/libpython-dev installed, also biosig for python will be installed.
+If you have Octave/liboctave-dev installed, also mexbiosig will be installed in octave.
+
+However there are some known (and probably also unknown) limitations. Known limitations are
+- Java language binding does not compile on MacOSX
+
+
+BioSig4C++ provides several tools:
+
+(1) = LIBRARIES =
+(1a) "libbiosig" provides a library for accessing different dataformats.
+The supported data formats are listed here:
+   http://pub.ist.ac.at/~schloegl/biosig/TESTED
+(1b) "libgdf" is a lightweight version of libbiosig, supporting only the GDF format.
+it requires only GCC not G++ for linking, has potentially much less security loopholes (XML) and bugs,
+and a much smaller memory footprint, which might be especially useful for embedded devices.
+It's interface is the same than for libbiosig, namely biosig.h
+(1c) "libphysicalunits" provides conversion tools for physical units from
+ascii text to 16bit integers according to ISO/IEEE 11073-10101:2004 Table A.6.3: Vital signs units of measurements
+text strings are cached for performance reasons, and can be used in a multi-threaded application.
+
+* Installation of official source release (for users):
+	download source release and run
+        see above
+
+
+* Installation from git repository (for developers, usually untested):
+  Requirement: gawk
+  ** Checkout code for the first time:
+
+	git clone https://git.code.sf.net/p/biosig/code biosig-code
+	cd biosig-code
+	autoconf || autoreconf -fi   # needed only the first time after checkout
+	./configure
+	make
+	sudo make install
+
+
+(2) = converter and tools =
+contains several tools for data conversion,
+	save2gdf: is a converter between different file formats, including but not
+	    limited to SCP-ECG(EN1064), HL7aECG (FDA-XML), GDF, EDF, BDF, CWFB
+	    and others save2gdf can be also used to upload or retrieve data
+	    from a bscs server, and to display the header information
+	    in ascii and in JSON format.
+	biosig2fhir: is a tool than converts biosig data into a hl7/fhir binary template,
+	    the header information is encoded in JSON format, the data is converted
+            into a base64-encoded GDF (OeNorm K2202:2015) formatted file.
+	physicalunits:
+	    is a tool to show the encoding of physical units according to ISO/IEEE 11073
+	biosig2gdf:
+	    converts any file of a supported data format to GDF format
+
+These can can be build with:
+   make tools
+
+
+(3) language bindings and foreign function interfaces:
+(3a) "mexSLOAD" is a MEX-interface for Octave and Matlab
+and is linked statically to libbiosig. It can be build with
+    make mex4o   # octave
+    make mex4m   # matlab
+for details see mex/README.
+
+(3b) "python" is an interface to python and dynamically linked to libbiosig.
+
+    sudo apt install libbiosig-dev    # Debian, Ubuntu, etc.
+    brew install biosig               # MacOSX with homebrew
+    pip install biosig
+
+    Debian/Ubuntu
+	sudo apt-get install python3-biosig
+
+    or
+	MYENV=$HOME/MyBiosigPythonEnv
+	python -m venv ${MYENV}
+	source ${MYENV}/bin/activate
+
+	cd biosig4c++/python && pip install .
+or
+	python3 -m pip install https://sourceforge.net/projects/biosig/files/BioSig%20for%20Python/biosig-2.6.1.tar.gz
+
+
+Use of the interface is shown in
+        pip install matplotlib
+        python biosig4c++/python/demo2.py
+
+
+(3c) mathematica
+is linked dynamically to libbiosig and can be build with:
+	make mma
+see also biosig4c++/mma/README, and biosig4c++/mma/biosig, biosig4c++/mma/hdrinfo.nb, biosig4c++/mma/mySLOAD.nb for more details.
+
+(3z) other language interfaces
+Basic interfaces for R and Java are also available. For other languages
+(including PHP, Perl and TCL) are considered, but these still need to be implemented and tested.
+
+
+(5) Biosig tools for Matlab and Octave
+The easiest approach is to change into the directory
+    cd biosig4matlab
+and run "install" from within Matlab or Octave. This will set the path to the subdirectories.
+
+
+(6) Precompiled binaries for Win32 and Win64
+   biosig4c++/win##/save2gdf.exe  binary converter
+   biosig4c++/win##/libbiosig.{lib,dll}  static and dynamic library (requires zlib and libws2_32)
+   biosig4c++/mma/biosig.exe     Mathematica binding through Mathlink interface
+   biosig4c++/mex/mexSLOAD.mexw32   Mex-file for Win32/Matlab
+
+
+The internal data structure resemble the header structure similar to
+  https://sourceforge.net/p/biosig/code/ci/master/tree/biosig4matlab/doc/header.txt
+and is defined in
+  https://sourceforge.net/p/biosig/code/ci/master/tree/biosig4c++/biosig-dev.h
+(see HDRTYPE and CHANNEL_TYPE)
+
+Encoding of Event/Markers/Annotations is available here:
+  http://pub.ist.ac.at/~schloegl/matlab/eeg/EventCodes.html
+
+The latest list of supported data formats is available here:
+  http://pub.ist.ac.at/~schloegl/biosig/TESTED
+
+
+File(s):
+-------------
+    README 	this file
+    biosig.h	definition of external biosig interface
+    biosig-dev.h definition of internal functions
+    biosig.c	SOPEN, SREAD, SWRITE, SEOF, SCLOSE functions
+    save2gdf.c	converter between various file formats.
+    physicalunit.c         en-/decodes physical units according to ISO/DIS 11073-10101:2003
+    mexSLOAD.cpp is a MEX-File for loading data in Octave and Matab.
+    t210/*	reading SCP,FAMOS file format
+    t220/*      writing SCP file format
+    t230/*      support of HL7aECG file format
+    t240/*	Support for CNSystems' File Exchange Format (CNS-FEF), note this is different to CENTS14271 in t241/
+    t241/*.asn1	ASN.1 specification of ISO11073-xxxxx and CENTS-14271 (FEF),
+    test0/*	scripts and functions for testing
+    Makefile	script for compiling and testing under GNU/Linux
+    Makefile.win32	script for compiling and testing on win32 using mingw
+    mex/*       Octave/Matlab binding through MEX-interface
+    mma/*	MathLink interface to mathematica
+    win32/*	library and executables for Windows
+    python/*.py show example and demo
+    src/*.c	applications: flowmon reads data from serial port, ttl2trig reads data from audio card
+
+
+More information is available at http://biosig.sf.net/
+
+If you have any questions you can also contact the mailinglist
+https://lists.sourceforge.net/lists/listinfo/biosig-general
+
+
+    Copyright (C) 2005-2024 Alois Schloegl <alois.schloegl@gmail.com>
+    This function is part of the BioSig repository at http://biosig.sf.net/
+

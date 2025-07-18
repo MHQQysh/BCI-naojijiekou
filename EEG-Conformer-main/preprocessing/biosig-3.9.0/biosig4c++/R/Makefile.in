@@ -1,0 +1,18 @@
+
+BIOSIG4R_PKG=biosig_@PACKAGE_VERSION@.tar.gz
+
+build: $(BIOSIG4R_PKG)
+
+sload.so: sload.c
+	R CMD SHLIB sload.c -I.. -L.. -lbiosig
+
+clean:
+	rm *.o *.so *.gz $(BIOSIG4R_PKG)
+
+$(BIOSIG4R_PKG):
+	R CMD build .
+	R CMD check --as-cran $@
+
+install: $(BIOSIG4R_PKG)
+	R CMD INSTALL $<
+

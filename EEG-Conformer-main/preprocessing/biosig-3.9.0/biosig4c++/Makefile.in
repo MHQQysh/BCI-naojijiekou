@@ -1,0 +1,1337 @@
+######## Makefile for "BioSig for C/C++" #####################
+###
+###  Copyright (C) 2006-2020 Alois Schloegl <alois.schloegl@ist.ac.at>
+###  This file is part of the "BioSig for C/C++" repository
+###  (biosig4c++) at https://biosig.sourceforge.io/
+###
+##############################################################
+
+##### Target: GNU/Linux
+#
+## make && make install    build and install libbiosig, but no other tools.
+#             libbiosig is a prerequisite for building all the other tools below.
+#
+## make save2gdf   - makes converter
+## make biosig_fhir   - makes converter for fhir-binary template
+## make install_save2gdf   - installs converter
+## make install_mma 	installs biosig's sload for Mathematica in $PREFIX/share/biosig/mathematica
+## make install_mex 	installs mexbiosig for Matlab in $PREFIX/share/biosig/mex
+#
+## make mex4o      - makes mexSLOAD, mexSOPEN for Octave (requires Octave-headers)
+## make mex4m      - makes mexSLOAD, mexSOPEN for Matlab (requires Matlab, mex -setup must be configured)
+## make mexw32     - makes mexSLOAD.mexw32, mexSOPEN.mexw32 (requires that mingw32, gnumex libraries from Matlab/Win32)
+## make mexw64     - makes mexSLOAD.mexw64, mexSOPEN.mexw64 (requires that mce-w32, gnumex libraries from Matlab/Win64)
+## make mex        - mex4o, mex4m, mexw32, mexw64 combined
+## make biosig4java - makes Java interface (experimental)
+## make biosig4php - makes PHP interface (experimental)
+## make biosig4perl - makes perl interface (experimental)
+## make biosig4ruby - makes ruby interface (experimental)
+## make biosig4tcl - makes tcl/tk interface (experimental)
+##
+## make win32 and make win64 are obsolete. save2gdf.exe, and libbiosig.{a,dll} for windows can now be built
+## with the mingw-cross-compiler environment (mxe.cc).
+##    git clone https://github.com/schloegl/mxe.git
+##    make biosig
+## should do what you want. Please note, that win32mma does now also rely that libbiosig is built with MXE.
+## Make sure that CROSS or CROSS64 is properly defined when running `make`
+##
+## ???
+## make sigviewer  - makes sigviewer
+
+##### Target: Win32
+## make win32      - makes save2gdf.exe,libbiosig.lib,libbiosig.dll, for MSWindows, requires MinGW
+## make mexw32 mex/mexSLOAD.mexw32   - requires MinGW32 and GNUMEX libraries from Matlab/Win32
+## make win32/sigviewer.exe 	- requires sources of SigViewer, and MinGW32 (mex: make suitesparse zlib qt )
+
+##### Target: Win64
+## make win64      - makes save2gdf.exe,libbiosig.lib,libbiosig.dll, for MSWindows, requires MinGW
+## make mexw64 mex/mexSLOAD.mexw64   - requires MCE-W64 and GNUMEX libraries from Matlab/Win64
+## make win64/sigviewer.exe 	- requires sources of SigViewer and MCE-W64, make suitesparse zlib qt
+
+##### Target: MacOSX w/ homebrew
+## make install_homebrew	installs libbiosig and save2gdf
+	# requires: brew tap homebrew/dupes
+	#	    brew install libiconv
+
+###############################
+# whether dynamic or static linking is used, can be controlled with
+# LIBEXT. Setting it to 'a' links statically, 'so' links dynamically
+#
+# TODO: replace this
+LIBEXT        = a
+#LIBEXT	      = so
+###############################
+
+### User-specified options: its likely you want to change this
+# settings for cross compiler: tested with MXE and mce-w64 with make suitesparse zlib qt ;
+CROSS   = $(HOME)/src/mxe.github.schloegl/usr/bin/i686-w64-mingw32.static
+## local MXE
+ifeq "$(wildcard $(CROSS)-gcc)" ""
+CROSS   = $(HOME)/src/mxe.master/usr/bin/i686-w64-mingw32.static
+endif
+ifeq "$(wildcard $(CROSS)-gcc)" ""
+CROSS         = $(shell pwd)/../mxe/usr/bin/i686-w64-mingw32.static
+endif
+ifeq "$(wildcard $(CROSS)-gcc)" ""
+CROSS         = /usr/local/src/mxe/usr/bin/i686-w64-mingw32.static
+endif
+
+CROSS64       = $(HOME)/src/mxe.github.schloegl/usr/bin/x86_64-w64-mingw32.static
+ifeq "$(wildcard $(CROSS64)-gcc)" ""
+CROSS64       = $(HOME)/src/mxe.master/usr/bin/x86_64-w64-mingw32.static
+endif
+ifeq "$(wildcard $(CROSS64)-gcc)" ""
+CROSS64       = $(HOME)/src/mxe.master/usr/bin/x86_64-w64-mingw32.static
+endif
+
+# settings for mex files
+MEX_OPTION    = -largeArrayDims # turn on for 64 bit Matlab, otherwise empty
+# directory for sources of sigviewer
+PathToSigViewer = ../sigviewer
+PathToSigViewerWIN32 = ../sigviewer4win32
+PathToSigViewerWIN64 = ../sigviewer4win64
+
+CFLAGS       += -pipe -fPIC -fno-builtin-memcmp -O2 -Wno-unused-result
+CFLAGS       += -Wno-deprecated
+CFLAGS       += -fvisibility=hidden
+
+prefix        = @prefix@
+exec_prefix  ?= @prefix@
+libdir        = @libdir@
+includedir    = @includedir@
+bindir        = @bindir@
+mandir        = @mandir@
+
+CFLAGS       += -I$(includedir)
+CXXFLAGS     += $(CFLAGS)
+
+## TARGET dependencies
+ifeq (,$(TARGET))
+	CC      ?= gcc
+	CXX     ?= g++
+	AR      := ar rcs
+	PKGCONF := pkg-config
+	SHAREDLIB = -shared
+	DLEXT    = so
+else ifeq (intel,$(TARGET))
+	CC      := icc
+	CXX     := icc
+	LD      := xild
+	AR      := xiar crs
+else
+	PREFIX  := $(subst /bin/,/,$(dir $(shell which $(TARGET)-gcc)))
+	CC      := $(TARGET)-gcc
+	CXX     := $(TARGET)-g++
+	LD      := $(TARGET)-ld
+	AR      := $(TARGET)-ar rcs
+	PKGCONF := $(TARGET)-pkg-config
+	TARGETPLATFORM = windows
+	ifneq (,$(findstring mingw,$(TARGET)))
+		## add gnulib's getlogin
+		SOURCES += win32/getlogin.c win32/getline.c win32/getdelim.c
+		OBJECTS += getlogin.o getline.o getdelim.o
+		LDLIBS  += -lssp
+		LDLIBS  += -liconv -lstdc++ -lws2_32
+		PKG_CONFIG_LIBS += -liconv -lws2_32
+		BINEXT   = .exe
+		DLEXT    = dll
+	endif
+endif
+
+SONAMEVERSION ?= 3
+DLPRE = lib
+
+### TODO: DLEXT does not work correctly on MXE/MINGW
+DLDIR = $(libdir)
+ifneq (,$(findstring Darwin, $(shell uname)))
+	## Homebrew:
+	##	brew install gawk
+	##	brew install gnu-tar
+	##	brew install homebrew/dupes/libiconv
+	##	brew install homebrew/science/suite-sparse
+	##
+	LD	       = $(CXX) -shared
+	CFLAGS        += -I$(prefix)/include
+	CFLAGS        += -mmacosx-version-min=10.13
+	LDLIBS        += -liconv -lstdc++
+	SHAREDLIB      = -dylib -arch x86_64 #-macosx_version_min 10.13
+	LDFLAGS       += -L$(prefix)/lib/
+	DLEXT          = dylib
+	FULLDLEXT      = .dylib
+	SONAME_PREFIX  = -install_name # the last space character is crucial
+
+else ifneq (,$(findstring CYGWIN, $(shell uname)))
+	DLEXT = dll
+	DLPRE = cyg
+	DLDIR = $(bindir)
+	LIBEXT = dll.a
+	BINEXT = .exe
+	LD	       = $(CXX)
+	LDLIBS        += -liconv -lstdc++
+	FULLDLEXT      = -${SONAMEVERSION}.dll
+	SONAME_PREFIX  = -Wl,-soname=
+	TARGETPLATFORM = windows
+
+else ifneq (,$(findstring MINGW, $(shell uname)))
+	### TODO: check if this path is useful at all ###
+	## add gnulib's getlogin
+	SOURCES += win32/getlogin.c win32/getline.c win32/getdelim.c
+	OBJECTS += getlogin.o getline.o getdelim.o
+	## exclude conflicting definition of sopen from mingw's io.h
+	CC  = gcc
+	CXX = g++
+	CFLAGS  += -pipe -fPIC -D_REENTRANT -D=BUILD_DLL
+	LD	 = $(CXX)
+	FULLDLEXT      = ${SONAMEVERSION}.dll
+	SONAME_PREFIX  = -Wl,-soname=
+	LDLIBS  += -lstdc++
+	LDLIBS  += -liconv -lws2_32
+	LDFLAGS += -Wl,-subsystem,windows
+	LDFLAGS += -L$(prefix)/lib/
+	DLDIR = $(bindir)
+	TARGETPLATFORM = windows
+
+else ifneq (,$(findstring MSYS_NT,$(shell uname)))
+	LD             = $(CXX)
+	LDLIBS        += -liconv
+	FULLDLEXT      = .so.${SONAMEVERSION}
+	SONAME_PREFIX  = -Wl,-soname=
+
+else ifneq (,$(findstring mingw,$(TARGET)))
+	## mingw, MXE
+	LD	       = $(CXX)
+	FULLDLEXT      = -${SONAMEVERSION}.dll
+	DLEXT          = dll
+	DLDIR = $(bindir)
+	TARGETPLATFORM = windows
+	SONAME_PREFIX  = -Wl,-soname=
+
+else
+	LD	       = $(CXX)
+	FULLDLEXT      = .so.${SONAMEVERSION}
+	SONAME_PREFIX  = -Wl,-soname=
+endif
+
+DEFINES_ALL   = #-D=NDEBUG
+
+DEFINES      += $(DEFINES_ALL)
+#DEFINES      += -D=WITH_SON
+#DEFINES      += -D=WITHOUT_SCP_DECODE
+#DEFINES      += -D=WITH_TIMESTAMPEVENT
+#DEFINES      += -D=WITH_TIMESTAMPCHANNEL
+### Mingw,MXE, etc. must avoid name space conflict concerning SOPEN ###
+#DEFINES      += -D=NO_OLDNAMES
+
+#DEFINES      += -D=WITH_CURL
+DEFINES      += -D=__4HAERTEL__
+DEFINES      += -D=WITH_FAMOS
+DEFINES      += -D=WITH_FIFF
+DEFINES      += -D=WITHOUT_NETWORK
+DEFINES      += -D=WITH_SCP3
+DEFINES      += -D=WITH_FEF
+#DEFINES      += -D=WITH_PDP
+	### DICOM: DCMTK or GDCM, or internal
+	# WITH_DCMTK is already configured by autoconf
+	# WITH_GDCM is experimental
+	# WITH_DICOM (internal implementation) is experimental
+#DEFINES      += -D=WITH_GDCM
+#DEFINES      += -D=WITH_GSL
+#DEFINES      += -D=WITH_EEPROBE
+#DEFINES      += -D=WITH_TDMS
+#DEFINES      += -D=WITH_AVI
+#DEFINES      += -D=WITH_RIFF
+#DEFINES      += -D=WITH_WAV
+#DEFINES      += -D=WITH_NEV
+DEFINES      += -D=MAKE_EDFLIB
+
+ifeq (1,@HAVE_LIBZ@)
+	LDLIBS     += -lz
+endif
+ifeq (1,@HAVE_LIBPTHREAD@)
+	LDLIBS     += -lpthread
+endif
+ifeq (1,@HAVE_LIBCHOLMOD@)
+	LDLIBS     += -lcholmod
+	ifeq (Darwin,$(shell uname))
+	  ## homebrew requires this in addition to cholmod
+	  LDLIBS     += -lsuitesparseconfig
+	endif
+endif
+ifeq (1,@HAVE_LIBDCMTK@)
+	DEFINES      += -D=WITH_DCMTK
+	LDLIBS       += -ldcmdata -loflog -lofstd
+	SOURCES      += t210/sopen_dcmtk_read.cpp
+	OBJECTS      += sopen_dcmtk_read.o
+	MinGWOBJECTS += win32/sopen_dcmtk_read.obj
+endif
+ifeq (1,@HAVE_LIBHDF5@)
+	DEFINES    += -DWITH_HDF5=1
+	LDLIBS     += -lhdf5 -lhdf5_hl
+endif
+ifeq (1,@HAVE_LIBMATIO@)
+	DEFINES    += -DWITH_MATIO=1
+	LDLIBS     += -lmatio
+endif
+ifeq (1,@HAVE_LIBM@)
+	LDLIBS     += -lm
+endif
+ifeq (1,@HAVE_SQLITE3@)
+	DEFINES    += -DWITH_SQLITE3=1 -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION
+	LDLIBS     += -lsqlite3
+endif
+ifeq (1,@HAVE_LIBTINYXML@)
+	DEFINES    += -D=WITH_LIBTINYXML
+	LDLIBS     += -ltinyxml
+endif
+ifeq (1,@HAVE_LIBTINYXML2@)
+	DEFINES    += -D=WITH_LIBTINYXML2
+	LDLIBS     += -ltinyxml2
+endif
+
+ifneq (,$(findstring WITH_GDCM, $(DEFINES)))
+  INCPATH    += -I$(wildcard /usr/include/gdcm-2*/)
+  LDLIBS     += -lgdcmCommon -lgdcmDSED -lgdcmMEXD -lgdcmMSFF -lgdcmDICT -lgdcmIOD
+endif
+
+ifneq (,$(findstring WITH_CURL, $(DEFINES)))
+  LDLIBS     += -lcurl
+endif
+ifneq (,$(findstring stack-protector, $(CFLAGS)))
+ifneq (,$(findstring CYGWIN, $(shell uname)))
+  LDLIBS     += -lssp
+endif
+ifneq (,$(findstring MINGW, $(shell uname)))
+  LDLIBS     += -lssp
+endif
+endif
+
+DELETE        = rm -f
+COPY          = cp -f
+DATA_DIR      = data/
+DATA_DIR_CFS  = $(HOME)/L/data/test/cfs/
+TEMP_DIR      = test/
+SED           = sed
+TAR           = tar
+VERBOSE	     := -V0
+
+##########################################################
+## set Matlab and Octave variables
+ifeq (undefined,$(origin MATLABDIR))
+  ifeq (Darwin,$(shell uname))
+    MATLABDIR := $(shell find /Applications/MATLAB* -name bin -type d -depth 1 2>/dev/null | head -1)
+  else
+    MATLABDIR ?= $(shell find /usr/local/MATLAB* -maxdepth 2 -name bin -type d 2>/dev/null | head -1)
+  endif
+endif
+
+ifeq (,$(MATLABDIR))
+  #$(warning MATLABDIR is not defined)
+else
+  MEX         = $(MATLABDIR)/mex
+  MEX_EXT    := $(shell $(MATLABDIR)/mexext)
+endif
+
+##########################################################
+
+##########################################################
+## set variables for MinGW Crosscompiler: compile on linux binaries for windows
+##
+PathToMinGW   = $(dir $(CROSS))..$(nondir $(CROSS))
+PathToMinGW64 = $(dir $(CROSS64))..$(nondir $(CROSS64))
+
+MinGWCC      = $(CROSS)-gcc
+MinGWCXX     = $(CROSS)-g++
+MinGWDEF     = $(DEFINES)
+MinGWCFLAGS  = -pipe -fPIC  -D_REENTRANT -D=BUILD_DLL $(MinGWDEF) -Iwin32 -I$(PathToMinGW)/include/
+MinGWLIBS    = win32/libbiosig.a -L$(PathToMinGW)/lib/ $(LDLIBS) # static
+MinGWLINK    = $(MinGWCXX)
+
+MinGW64CC      = $(CROSS64)-gcc
+MinGW64CXX     = $(CROSS64)-g++
+MinGW64CFLAGS  = -pipe -fPIC -O2 -D_REENTRANT -D=BUILD_DLL $(MinGWDEF) -Iwin64 -I$(PathToMinGW64)/include/
+MinGW64LIBS    = win64/libbiosig.a -L$(PathToMinGW64)/lib/ $(LDLIBS) # static
+MinGW64LINK    = $(MinGW64CXX)
+##########################################################
+
+# Versioning
+MAJOR_VERSION  := $(word 3, $(shell grep '\#define BIOSIG_VERSION_MAJOR' biosig-dev.h))
+MINOR_VERSION  := $(word 3, $(shell grep '\#define BIOSIG_VERSION_MINOR' biosig-dev.h))
+STEPPING       := $(word 3, $(shell grep '\#define BIOSIG_PATCHLEVEL' biosig-dev.h))
+BIOSIG_VERSION := @PACKAGE_VERSION@
+TODAY          := $(shell date +%Y%m%d)
+
+####### Output directory
+OBJ	      = ./obj
+
+####### Files
+SOURCES      += biosig.c \
+		biosig2.c \
+		t210/sopen_cfs_read.c \
+		t210/sopen_hdf5.c \
+		t210/sopen_heka_read.c \
+		t210/sopen_igor.c \
+		t210/sopen_matio.c \
+		t210/sopen_sqlite.c \
+		t210/sopen_rhd2000_read.c \
+		t210/sopen_scp_read.c \
+		t210/sopen_tdms_read.c \
+		t210/sopen_famos_read.c \
+		t210/sopen_abf_read.c \
+		t210/sopen_alpha_read.c \
+		t210/sopen_axg_read.c \
+		t210/sopen_cadwell_read.c \
+		t210/sopen_biosigdump_read.c \
+		t210/scp-decode.cpp \
+		t220/sopen_scp_write.c \
+		t220/crc4scp.c \
+		t230/sopen_hl7aecg.cpp \
+		t240/sopen_fef_read.c \
+		test0/sandbox.c \
+		xgethostname.c \
+		gdftime.c \
+		mdc_ecg_codes.c \
+		physicalunits.c \
+		save2gdf.c \
+		biosig2gdf.c \
+		biosig-network.c \
+		biosig_client.c \
+		biosig_server.c
+
+ifneq (1,@HAVE_LIBTINYXML@)
+  ## build with internal TinyXML when libtinyxml is not available
+  SOURCES    +=	XMLParser/tinyxml.cpp \
+		XMLParser/tinyxmlparser.cpp \
+		XMLParser/tinyxmlerror.cpp \
+		XMLParser/tinystr.cpp
+endif
+
+OBJECTS      += \
+		biosig.o \
+		biosig2.o \
+		crc4scp.o \
+		sopen_cfs_read.o \
+		sopen_heka_read.o \
+		sopen_igor.o \
+		sopen_hdf5.o \
+		sopen_matio.o \
+		sopen_sqlite.o \
+		sopen_scp_read.o \
+		sopen_abf_read.o \
+		sopen_alpha_read.o \
+		sopen_axg_read.o \
+		sopen_cadwell_read.o \
+		sopen_biosigdump_read.o \
+		sopen_rhd2000_read.o \
+		sopen_scp_write.o \
+		sopen_hl7aecg.o \
+		gdftime.o \
+		mdc_ecg_codes.o \
+		physicalunits.o \
+		sandbox.o \
+		xgethostname.o
+
+MinGWOBJECTS  = \
+		win32/biosig.obj \
+		win32/biosig2.obj \
+		win32/crc4scp.obj \
+		win32/getlogin.obj \
+		win32/sopen_cfs_read.obj \
+		win32/sopen_heka_read.obj \
+		win32/sopen_igor.obj \
+		win32/sopen_hdf5.obj \
+		win32/sopen_matio.obj \
+		win32/sopen_sqlite.obj \
+		win32/sopen_scp_read.obj \
+		win32/sopen_abf_read.obj \
+		win32/sopen_alpha_read.obj \
+		win32/sopen_axg_read.obj \
+		win32/sopen_cadwell_read.obj \
+		win32/sopen_biosigdump_read.o \
+		win32/sopen_rhd2000_read.obj \
+		win32/sopen_scp_write.obj \
+		win32/sopen_hl7aecg.obj \
+		win32/gdftime.obj \
+		win32/physicalunits.obj \
+		win32/sandbox.obj \
+		win32/xgethostname.obj
+
+ifneq (,$(findstring WITH_FAMOS, $(DEFINES)))
+  OBJECTS      += sopen_famos_read.o
+endif
+ifneq (,$(findstring WITH_FAMOS, $(MinGWDEF)))
+  MinGWOBJECTS += win32/sopen_famos_read.obj
+endif
+
+ifneq (,$(findstring WITH_FEF, $(DEFINES)))
+  -include t240/modules.mk
+  SOURCES += $(patsubst %.c,t240/%.c,${ASN_MODULE_SOURCES})
+  OBJECTS += $(patsubst %.c,%.o,${ASN_MODULE_SOURCES})
+  OBJECTS      += sopen_fef_read.o
+endif
+ifneq (,$(findstring WITH_FEF, $(MinGWDEF)))
+  MinGWOBJECTS += win32/sopen_fef_read.obj
+endif
+
+ifneq (,$(findstring WITH_TDMS, $(DEFINES)))
+  OBJECTS      += sopen_tdms_read.o
+endif
+ifneq (,$(findstring WITH_TDMS, $(MinGWDEF)))
+  MinGWOBJECTS += win32/sopen_tdms_read.obj
+endif
+
+ifeq (,$(findstring WITHOUT_NETWORK, $(DEFINES)))
+  OBJECTS      += biosig-network.o
+endif
+ifeq (,$(findstring WITHOUT_NETWORK, $(MinGWDEF)))
+  MinGWOBJECTS += win32/biosig-network.obj
+endif
+
+ifeq (,$(findstring WITHOUT_SCP_DECODE, $(DEFINES)))
+  OBJECTS      += scp-decode.o
+endif
+ifeq (,$(findstring WITHOUT_SCP_DECODE, $(MinGWDEF)))
+  MinGWOBJECTS += win32/scp-decode.obj
+endif
+
+ifeq (,$(findstring WITH_LIBTINYXML, $(DEFINES)))
+  ## build with TinyXML when libtinyxml is not available
+  OBJECTS    += tinyxml.o tinyxmlparser.o tinyxmlerror.o tinystr.o
+  MinGWOBJECTS += win32/tinyxml.obj win32/tinyxmlparser.obj win32/tinyxmlerror.obj win32/tinystr.obj
+endif
+
+
+MinGW64OBJECTS  = $(patsubst win32/%.obj, win64/%.obj, $(MinGWOBJECTS))
+
+TARGET = save2gdf${BINEXT} libbiosig.${LIBEXT}
+
+LIB_OBJECTS  = libbiosig.pc
+ifeq (@STATIC_LIBS@,yes)
+	LIB_OBJECTS += libbiosig.a libgdf.a libphysicalunits.a libbiosig.pc
+endif
+ifeq (@SHARED_LIBS@,yes)
+	LIB_OBJECTS += $(DLPRE)biosig.$(DLEXT) $(DLPRE)gdf.$(DLEXT) $(DLPRE)physicalunits.$(DLEXT)
+endif
+
+BIN_OBJECTS = save2gdf${BINEXT} physicalunits${BINEXT} biosig_fhir${BINEXT} biosig2gdf${BINEXT}
+
+first: $(IO_H_FILE2) lib tools
+tools: $(BIN_OBJECTS)
+all: first #win32 win64 #sigviewer #win32/sigviewer.exe win64/sigviewer.exe #biosig_client biosig_server mma java tcl perl php ruby #sigviewer
+
+libbiosig lib: $(LIB_OBJECTS)
+
+#############################################################
+#	Compilation: Implicit, default rules
+#############################################################
+CHKSUM_LIBB64 = 20106f0ba95cfd9c35a13c71206643e3fb3e46512df3e2efb2fdbf87116314b2
+libb64-1.2.1.zip:
+	curl -SLO https://downloads.sourceforge.net/project/libb64/libb64/libb64/libb64-1.2.1.zip
+
+libb64-1.2.1/src/cencode.c: libb64-1.2.1.zip
+	unzip -o libb64-1.2.1.zip -d .
+	touch $@
+
+vpath %.c ./:./t210:./t220:./t240:./test0:./src:./mma
+
+vpath %.cpp ./:./t210:./t230:./XMLParser
+
+.SUFFIXES: .o .c .cpp .cc .cxx .C
+
+
+%.o: t240/%.c biosig-dev.h gdftime.h physicalunits.h
+	$(CC) -c $(DEFINES) $(CPPFLAGS) $(CFLAGS) -I t240 $(INCPATH) -o "$@" "$<"
+
+%.c: %.h biosig-dev.h gdftime.h physicalunits.h
+
+%.cpp: %.h biosig-dev.h gdftime.h physicalunits.h
+
+%.o: %.c
+	$(CC) -c $(DEFINES) $(CPPFLAGS) $(CFLAGS)  $(INCPATH) -o "$@" "$<"
+
+%.o : win32/%.c
+	$(CC) -c $(DEFINES) $(CPPFLAGS) $(CFLAGS)  $(INCPATH) -o "$@" "$<"
+
+%.o: %.cpp biosig.h biosig-dev.h
+	$(CXX) -c $(DEFINES) $(CPPFLAGS) $(CXXFLAGS) $(INCPATH) -o "$@" "$<"
+
+sandbox.o: test0/sandbox.c biosig.h
+	$(CXX) -c $(DEFINES) $(CPPFLAGS) $(CXXFLAGS) $(INCPATH) -o "$@" "$<"
+
+
+win32/%.obj: t240/%.c biosig-dev.h
+	$(MinGWCC) -c $(DEFINES) $(MinGWCFLAGS) -I t240 -o "$@" "$<"
+win32/%.obj: %.c
+	$(MinGWCC) -c $(DEFINES) $(MinGWCFLAGS) -o "$@" "$<"
+win32/%.obj: %.cpp
+	$(MinGWCXX) -c $(DEFINES) $(MinGWCFLAGS) -o "$@" "$<"
+
+win32/%.obj: win32/%.c
+	$(MinGWCC) -c $(DEFINES) $(MinGWCFLAGS) -I win32 -o "$@" "$<"
+
+
+win64/%.obj: t240/%.c biosig-dev.h
+	$(MinGW64CC) -c $(DEFINES) $(MinGW64CFLAGS) -I t240 -o "$@" "$<"
+win64/%.obj: %.c
+	$(MinGW64CC) -c $(DEFINES) $(MinGW64CFLAGS) -o "$@" "$<"
+win64/%.obj: %.cpp
+	$(MinGW64CXX) -c $(DEFINES) $(MinGW64CFLAGS) -o "$@" "$<"
+
+win64/%.obj: win32/%.c
+	$(MinGW64CC) -c $(DEFINES) $(MinGW64CFLAGS) -I win32 -o "$@" "$<"
+
+
+
+#############################################################
+#	eventcodes and units: conversion from ascii to C code
+#############################################################
+
+biosig.c: eventcodes.i eventcodegroups.i 11073-10102-AnnexB.i biosig.h biosig-dev.h
+
+physicalunits.c: units.i physicalunits.h
+
+eventcodes.i eventcodegroups.i : ../biosig4matlab/doc/eventcodes.txt
+	gawk -f eventcodes.awk "$<"
+
+units.i : ../biosig4matlab/doc/units.csv
+	awk -f units.awk "$<" > "$@"
+
+11073-10102-AnnexB.i : ../biosig4matlab/doc//11073-10102-AnnexB.txt
+	awk -f annotatedECG.awk "$<" > "$@"
+
+
+#############################################################
+#	Compilation: exceptions, explicit rules
+#############################################################
+
+gdf.o: biosig.c biosig-dev.h eventcodes.i units.i 11073-10102-AnnexB.i
+	$(CC) -c -D=ONLYGDF -D=WITHOUT_NETWORK $(DEFINES) $(CPPFLAGS) $(CFLAGS) $(INCPATH) -o "$@" "$<"
+
+#getlogin_r.o: win32/getlogin_r.c
+#	$(CC) -c $(DEFINES) $(CPPFLAGS) $(CFLAGS) $(INCPATH) -o "$@" "$<"
+
+########### WIN32 ##################
+
+win32/gdf.obj: biosig.c biosig-dev.h
+	$(MinGWCC) -c -D=ONLYGDF $(DEFINES) $(MinGWCFLAGS) -o "$@" "$<"
+
+$(PathToSigViewerWIN32):
+	svn co https://sigviewer.svn.sourceforge.net/svnroot/sigviewer/trunk ../sigviewer4win32
+
+$(PathToSigViewerWIN32)/src/src.pro: $(PathToSigViewerWIN32)
+	svn up -r 557 ../sigviewer4win32
+
+win32/sigviewer.exe: win32/libbiosig.a win32/libbiosig.dll
+	#-$(COPY) ../biosig/doc/eventcodes.txt $(PathToSigViewerWIN32)/src/
+	-$(DELETE) $(PathToSigViewerWIN32)/extern/include/*.h
+	-$(COPY) biosig.h biosig2.h biosig-dev.h physicalunits.h $(PathToSigViewerWIN32)/extern/include
+	-$(DELETE) $(PathToSigViewerWIN32)/extern/lib/lib*
+	-$(COPY) win32/libbiosig.a $(PathToSigViewerWIN32)/extern/lib
+	$(SED) -i 's|\([[:space:]]*-lbiosig\)\([ #\\]*\)$$|\1 -lcholmod -lz -lcurl \2|' $(PathToSigViewerWIN32)/src/src.pro
+	echo 0.5.2-v${BIOSIG_VERSION} > $(PathToSigViewerWIN32)/src/version.txt
+	-(cd $(PathToSigViewerWIN32)/src; $(CROSS)-qmake; $(MAKE))
+	#-(cd $(PathToSigViewerWIN32); svn revert -R .; svn up -r 557; patch -p0 <../biosig4c++/patches/patch_sigviewer_0.5.2.diff; cd src; $(CROSS)-qmake; $(MAKE);)
+	-$(COPY) $(PathToSigViewerWIN32)/bin/release/sigviewer.exe win32/sigviewer.exe
+
+########### WIN64 ##################
+
+win64/gdf.obj: biosig.c biosig-dev.h
+	$(MinGW64CC) -c -D=ONLYGDF $(DEFINES) $(MinGW64CFLAGS) -o "$@" "$<"
+
+$(PathToSigViewerWIN64):
+	svn co https://sigviewer.svn.sourceforge.net/svnroot/sigviewer/trunk ../sigviewer4win64
+
+$(PathToSigViewerWIN64)/src/src.pro: $(PathToSigViewerWIN64)
+	svn up -r 557 ../sigviewer4win64
+
+win64/sigviewer.exe: win64/libbiosig.a win64/libbiosig.dll
+	#-$(COPY) ../biosig/doc/eventcodes.txt $(PathToSigViewerWIN64)/src/
+	-$(DELETE) $(PathToSigViewerWIN64)/extern/include/*.h
+	-$(COPY) biosig.h biosig2.h biosig-dev.h physicalunits.h $(PathToSigViewerWIN64)/extern/include
+	-$(DELETE) $(PathToSigViewerWIN64)/extern/lib/lib*
+	-$(COPY) win64/libbiosig.a $(PathToSigViewerWIN64)/extern/lib
+	$(SED) -i 's|\([[:space:]]*-lbiosig\)\([ #\\]*\)$$|\1 -lcholmod -lz -lcurl\2|' $(PathToSigViewerWIN64)/src/src.pro
+	echo 0.5.2-v${MAJOR_VERSION}.${MINOR_VERSION}.${STEPPING} > $(PathToSigViewerWIN64)/src/version.txt
+	-(cd $(PathToSigViewerWIN64)/src; $(CROSS64)-qmake; $(MAKE))
+	#-(cd $(PathToSigViewerWIN64); svn revert -R .; svn up -r 557; patch -p0 <../biosig4c++/patches/patch_sigviewer_0.5.2.diff; cd src; $(CROSS64)-qmake; $(MAKE);)
+	-$(COPY) $(PathToSigViewerWIN64)/bin/release/sigviewer.exe win64/sigviewer.exe
+
+
+#############################################################
+#	other language bindings (on Linux)
+#############################################################
+
+java: libbiosig
+	$(MAKE) -C java
+perl: libbiosig
+	$(MAKE) -C perl
+php: libbiosig
+	$(MAKE) -C php
+
+ruby/biosig_wrap.c: ruby/biosig.i
+	(cd ruby && swig -ruby biosig.i)
+ruby/Makefile: ruby/extconf.rb
+	ruby -C ruby extconf.rb
+biosig4ruby ruby: libbiosig ruby/Makefile ruby/biosig_wrap.c
+	$(MAKE) -C ruby
+
+tcl: libbiosig tcl/biosig.i
+	$(MAKE) -C tcl
+
+
+#############################################################
+#	WIN32 - BUILD
+#############################################################
+
+# libraries are built in MXE
+
+## save2gdf, pdp2gdf
+win32/%.exe: %.c
+	$(MinGWCXX) $(DEFINES) $(MinGWCFLAGS) "$<" $(MinGWLIBS) -o "$@"
+win32/physicalunits.exe: pu.c
+	$(MinGWCXX) $(DEFINES) $(MinGWCFLAGS) "$<" $(MinGWLIBS) -o "$@"
+
+win32: mexw32 win32mma
+
+
+#############################################################
+#	WIN64 - BUILD
+#############################################################
+
+# Libraries are build in MXE
+
+## save2gdf, pdp2gdf, pu
+win64/%.exe: %.c
+	$(MinGW64CXX) $(DEFINES) $(MinGW64CFLAGS) "$<" $(MinGW64LIBS) -o "$@"
+win64/physicalunits.exe: pu.c
+	$(MinGW64CXX) $(DEFINES) $(MinGW64CFLAGS) "$<" $(MinGW64LIBS) -o "$@"
+
+win64: mexw64
+
+
+#############################################################
+#	GNU/Linux - Shared Libaries
+#############################################################
+
+ifeq (,$(findstring Darwin, $(shell uname)))   # not on MacOSX
+%.${DLEXT}:%${FULLDLEXT}
+	ln -sf "$<" "$@"
+endif
+
+ifneq ($(TARGETPLATFORM),windows)
+ifeq (@SHARED_LIBS@,yes)
+$(DLPRE)biosig${FULLDLEXT}:$(OBJECTS)
+	$(LD) $(LDFLAGS) ${SONAME_PREFIX}"$@" $^ $(SHAREDLIB) $(LDLIBS) -o "$@"
+
+$(DLPRE)gdf${FULLDLEXT}: gdf.o gdftime.o physicalunits.o getlogin.o
+	$(LD) $(LDFLAGS) ${SONAME_PREFIX}"$@" $^ $(SHAREDLIB) $(LDLIBS) -o "$@"
+
+$(DLPRE)gdftime${FULLDLEXT}:gdftime.o
+	$(LD) $(LDFLAGS) ${SONAME_PREFIX}"$@" $^ $(SHAREDLIB) $(LDLIBS) -o "$@"
+
+$(DLPRE)physicalunits${FULLDLEXT}:physicalunits.o
+	$(LD) $(LDFLAGS) ${SONAME_PREFIX}"$@" $^ $(SHAREDLIB) $(LDLIBS) -o "$@"
+endif
+else
+#############################################################
+#	Windows DLL (mingw, cygwin
+#############################################################
+
+$(DLPRE)physicalunits${FULLDLEXT}: physicalunits.o
+	$(LD) $(LDFLAGS) -o "$@" -s -shared -fPIC $^ $(LDLIBS) -Wl,-subsystem,windows,--output-def,libphysicalunits.def,--out-implib,physicalunits.dll.a
+
+$(DLPRE)gdf${FULLDLEXT}: gdf.o getlogin.o gdftime.o physicalunits.o
+	$(LD) $(LDFLAGS) -o "$@" -s -shared -fPIC $^ $(LDLIBS) -Wl,-subsystem,windows,--output-def,libgdf.def,--out-implib,gdf.dll.a
+
+$(DLPRE)gdftime${FULLDLEXT}: gdftime.o
+	$(CC) $(LDFLAGS) -o "$@" -s -shared -fPIC $^ $(LDLIBS) -Wl,--subsystem,windows,--output-def,libgdftime.def,--out-implib,gdftime.dll.a
+
+$(DLPRE)biosig${FULLDLEXT}: $(OBJECTS) libbiosig.pc
+	$(LD) $(LDFLAGS) -o "$@" -s -shared -fPIC $(OBJECTS) $(LDLIBS) -Wl,-subsystem,windows,--output-def,libbiosig.def,--out-implib,biosig.dll.a
+
+endif
+
+#############################################################
+#	Static Libaries
+#############################################################
+
+ifeq (@STATIC_LIBS@,yes)
+libphysicalunits.a: physicalunits.o
+	-$(DELETE) "$@"
+	$(AR) "$@" "$<"
+
+#libgdftime.a: gdftime.o
+#	-$(DELETE) "$@"
+#	$(AR) "$@" "$<"
+
+libgdf.a: gdf.o getlogin.o gdftime.o physicalunits.o
+	-$(DELETE) "$@"
+	$(AR) "$@" gdf.o gdftime.o physicalunits.o
+
+libbiosig.a: $(OBJECTS) libbiosig.pc
+	-$(DELETE) libbiosig.a
+	$(AR) libbiosig.a $(OBJECTS)
+endif
+
+libbiosig.pc :
+	mkdir -p pkgconfig
+	echo "# Defines libbiosig.pc"       > "$@"
+	echo "prefix=$(prefix)"             >>"$@"
+	echo "exec_prefix=$(prefix)"        >>"$@"
+	echo "libdir=$(libdir)"         >>"$@"
+	echo "includedir=$(includedir)" >>"$@"
+	echo                                >>"$@"
+	echo "Name: libbiosig"		    >>"$@"
+	echo "Description: Biosig library"  >>"$@"
+	echo "Version: ${MAJOR_VERSION}.${MINOR_VERSION}.${STEPPING}" >>"$@"
+	echo "URL: http://biosig.sf.net"    >>"$@"
+	#
+	echo "Requires: "                   >> "$@"
+	echo "Requires.private: "           >> "$@"
+	echo "Cflags: $(DEFINES) "          >> "$@"
+	echo "Libs: -lbiosig $(PKG_CONFIG_LIBS)" >> "$@"
+	echo "Libs.private: $(LDLIBS)"      >> "$@"
+
+## save2gdf, pdp2gdf
+%${BINEXT}: %.c $(DLPRE)biosig$(FULLDLEXT)
+	$(CC) $(DEFINES) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) "$<" -L. -lbiosig -lstdc++ $(LDLIBS) -o "$@"
+
+physicalunits${BINEXT} : pu.c physicalunits.o
+	$(CC) $(DEFINES) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $^ $(LDLIBS) -o "$@"
+
+ifeq (1,@HAVE_LIBB64@)
+biosig_fhir${BINEXT}: biosig_fhir.c $(DLPRE)biosig$(FULLDLEXT)
+	$(CC) $(DEFINES) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) "$<" -L. -lbiosig -lstdc++ -lb64 $(LDLIBS) -o "$@"
+else
+biosig_fhir${BINEXT}: biosig_fhir.c libb64-1.2.1/src/cencode.c $(DLPRE)biosig$(FULLDLEXT)
+	$(CC) $(DEFINES) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -Ilibb64-1.2.1/include/ "$<" libb64-1.2.1/src/cencode.c -L. -lbiosig -lstdc++ $(LDLIBS) -o "$@"
+endif
+
+bscs: biosig_client${BINEXT} biosig_server${BINEXT} sandbox.o biosig.o
+biosig_client${BINEXT}: biosig_client.c libbiosig.$(LIBEXT) biosig-network.o
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) biosig_client.c biosig-network.o libbiosig.$(LIBEXT) $(LDLIBS) -o "$@"
+
+biosig_server${BINEXT}: biosig_server.c libbiosig.$(LIBEXT) biosig-network.o
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) biosig_server.c biosig-network.o libbiosig.$(LIBEXT) $(LDLIBS) -o "$@"
+
+
+#############################################################
+#	MathLink interface to Mathematica
+#############################################################
+
+mmaall: mma/sload.tm mma/sload.c
+	$(MAKE) -C mma CROSS=$(CROSS) CROSS64=$(CROSS64) LDLIBS="$(LDLIBS) -liconv" all
+
+mma : mma/biosig.exe
+
+mma/biosig.exe: mma/biosig.tm mma/biosig.c
+	$(MAKE) -C mma CROSS=$(CROSS) CROSS64=$(CROSS64) mma
+
+win32mma: mma/biosig.tm mma/biosig.c
+	$(MAKE) -C mma CROSS=$(CROSS) LDLIBS="$(LDLIBS) -liconv" win32mma
+
+win64mma: mma/biosig.tm mma/biosig.c
+	$(MAKE) -C mma CROSS64=$(CROSS64) LDLIBS="$(LDLIBS) -liconv" win64mma
+
+
+#############################################################
+#	MEX-files for Octave and Matlab
+#############################################################
+
+mex4o mex4m oct mex:
+	MKOCTFILE="@MKOCTFILE@" $(MAKE) -C mex $@
+
+mexw32 mexw64:
+	CROSS=$(CROSS) CROSS64=$(CROSS64) $(MAKE) -C mex $@
+
+mexbiosig: mex/mexbiosig-$(BIOSIG_VERSION).src.tar.gz
+biosig4octave: mex/biosig4octave-$(BIOSIG_VERSION).src.tar.gz
+
+mex/mexbiosig-$(BIOSIG_VERSION).src.tar.gz: mex/*.cpp
+	$(eval $@_TMP := $(shell mktemp -d /tmp/biosig.XXXXXX)/mexbiosig-$(BIOSIG_VERSION))
+	echo "$($@_TMP) generated";
+	$(shell mkdir -p $($@_TMP)/doc/)
+	$(shell mkdir -p $($@_TMP)/inst/)
+	$(shell mkdir -p $($@_TMP)/src/)
+	cp mex/README $($@_TMP)/doc/
+	$(SED) -e 's#^Version.*$$#Version: $(BIOSIG_VERSION)#g' -e 's#^Date.*$$#Date: '$(shell date +%Y-%m-%d)'#g' mex/DESCRIPTION > $($@_TMP)/DESCRIPTION
+	cp ../COPYING $($@_TMP)/
+	cp mex/*.cpp mex/Makefile $($@_TMP)/src/
+	### TODO
+	#touch $($@_TMP)/src/mex{SOPEN,SLOAD,SSAVE}.m
+	$(TAR) -czf "$@" $($@_TMP)/../mexbiosig-$(BIOSIG_VERSION)
+	-rm -rf $(shell dirname $($@_TMP) )
+	(cd mex && ln -sf mexbiosig-$(BIOSIG_VERSION).src.tar.gz mexbiosig.src.tar.gz)
+	echo "###  In order to publish release, run ### "
+	echo "#    cp "$@" ~/L/public_html/biosig/prereleases/"
+
+mex/biosig4octave-$(BIOSIG_VERSION).src.tar.gz: mex/*.cpp
+	$(eval $@_TMP := $(shell mktemp -d /tmp/biosig.XXXXXX)/biosig4octave-$(BIOSIG_VERSION))
+	echo "$($@_TMP) generated";
+	$(shell mkdir -p $($@_TMP)/doc/)
+	$(shell mkdir -p $($@_TMP)/inst/)
+	$(shell mkdir -p $($@_TMP)/src/)
+	cp mex/README $($@_TMP)/doc/
+	$(SED) -e 's#^Name.*$$#Name: biosig#g' -e '/^Title/ s#mexBiosig#Biosig#g' -e 's#^Version.*$$#Version: $(BIOSIG_VERSION)#g' -e 's#^Date.*$$#Date: '$(shell date +%Y-%m-%d)'#g' mex/DESCRIPTION > $($@_TMP)/DESCRIPTION
+	cp ../COPYING ../CITATION $($@_TMP)/
+	cp mex/*.cpp mex/Makefile $($@_TMP)/src/
+	cp -r ../biosig4matlab/* $($@_TMP)/inst/
+	rm $($@_TMP)/inst/t300_FeatureExtraction/hurst.m	# is part of Octave Signal package
+	-rm -r $($@_TMP)/inst/maybe-missing
+	### TODO
+	#touch $($@_TMP)/src/mex{SOPEN,SLOAD,SSAVE}.m
+	$(TAR) -czf "$@" $($@_TMP)/../biosig4octave-$(BIOSIG_VERSION)
+	-rm -rf $(shell dirname $($@_TMP) )
+	(cd mex && ln -sf biosig4octave-$(BIOSIG_VERSION).src.tar.gz biosig4octave.src.tar.gz)
+	echo "###  In order to publish release, run ### "
+	echo "#    cp "$@" ~/L/public_html/biosig/prereleases/"
+
+#############################################################
+#	R/sload
+#############################################################
+
+R: R/sload.$(DLEXT)
+
+R/sload.$(DLEXT): R/sload.c libbiosig.$(DLEXT)
+	$(MAKE) -C R
+
+
+#############################################################
+#	SigViewer
+#############################################################
+
+sigviewer: $(PathToSigViewer)/bin/sigviewer
+	$(COPY) $(PathToSigViewer)/bin/release/sigviewer bin/sigviewer-$(TODAY)
+	ln -sf sigviewer-$(TODAY) bin/sigviewer
+
+$(PathToSigViewer):
+	svn co https://sigviewer.svn.sourceforge.net/svnroot/sigviewer/trunk ../sigviewer
+
+$(PathToSigViewer)/src/src.pro: $(PathToSigViewer)
+	svn up -r 557 ../sigviewer
+
+$(PathToSigViewer)/bin/sigviewer: libbiosig.$(LIBEXT) biosig-dev.h biosig.h
+	-$(DELETE) $(PathToSigViewer)/extern/include/*
+	-$(COPY) biosig-dev.h biosig.h biosig2.h physicalunits.h $(PathToSigViewer)/extern/include
+	-$(DELETE) $(PathToSigViewer)/extern/lib/lib*
+	-$(COPY) libbiosig.a $(PathToSigViewer)/extern/lib
+	$(SED) -i 's|\([[:space:]]*-lbiosig\)\([ #\\]*\)$$|\1 $(LDLIBS) \2|' $(PathToSigViewer)/src/src.pro
+	echo 0.5.2-v${BIOSIG_VERSION} > $(PathToSigViewer)/src/version.txt
+	(cd $(PathToSigViewer)/src; qmake; $(MAKE);)
+	#-(cd $(PathToSigViewer); svn revert -R .; svn up -r 557; patch -p0 <../biosig4c++/patches/patch_sigviewer_0.5.2.diff; cd src; qmake; $(MAKE);)
+	-$(COPY) $(PathToSigViewer)/bin/release/sigviewer bin/sigviewer
+
+docs: 	docs/save2gdf.txt  docs/mexSLOAD.txt
+	asciidoc -d manpage docs/save2gdf.txt
+	asciidoc -d manpage docs/mexSLOAD.txt
+
+
+# for backward compatibility
+save2scp: save2gdf${BINEXT}
+save2aecg: save2gdf${BINEXT}
+
+
+#############################################################
+#	APPLICATIONS: TTL2TRIG, FLOWMON
+#############################################################
+
+###	TTL2TRIG
+ttltrig: bin/ttltrig
+bin/ttl2trig : src/ttl2trig.c gdf.o gdftime.o physicalunits.o
+	mkdir -p ./bin
+	$(CC) -D=WITH_BIOSIG $(DEFINE) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $^ -Wall -Wextra -lasound $(LDLIBS) -o "$@"
+
+###	FLOWMON
+flowmon.o: src/flowmon2.c
+	$(CC) -c $(DEFINES) $(CPPFLAGS) $(CFLAGS) -o "$@" "$<"
+
+flowmon: bin/flowmon
+bin/flowmon: flowmon.o gdf.o gdftime.o physicalunits.o
+	mkdir -p ./bin
+	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o "$@"
+
+
+#############################################################
+#	INSTALL and DE-INSTALL
+#############################################################
+
+.PHONY: clean install install-strip install_libbiosig remove install_sigviewer asc bin testscp testhl7 testbin test test6 zip
+
+clean:
+	-$(DELETE) *~
+	-$(DELETE) *.a
+	-$(DELETE) *.def
+	-$(DELETE) *.dll
+	-$(DELETE) *.dll.a
+	-$(DELETE) *.i
+	-$(DELETE) *.o
+	-$(DELETE) *.so *.dylib
+	-$(DELETE) *.so.*
+	-$(DELETE) *.oct
+	-$(DELETE) libbiosig.pc
+	-$(DELETE) $(TEMP_DIR)t1.*
+	-$(DELETE) win32/*.exe win32/*.o* win32/*.lib win32/*.a
+	-$(DELETE) win64/*.exe win64/*.o* win64/*.lib win64/*.a
+	-$(DELETE) t240/*.o*
+	-$(DELETE) t240/libcnsfef.a
+	-$(DELETE) libbiosig.* libbiosig${SONAMEVERSION}.*
+	-$(DELETE) pdp2gdf save2gdf physicalunits biosig_fhir biosig2gdf
+	-$(DELETE) mma/biosig.exe mma/*/biosig.exe
+	-$(MAKE) -C java clean
+	-$(MAKE) -C mex clean
+	-$(DELETE) mex/mexbiosig*.src.tar.gz
+	-$(DELETE) mex/biosig4octave*.src.tar.gz
+	-$(MAKE) -C mma clean
+	-$(MAKE) -C php clean
+	-$(MAKE) -C perl clean
+	-$(MAKE) -C R clean
+	-$(MAKE) -C ruby clean
+	-$(MAKE) -C tcl clean
+
+install_sigviewer: sigviewer
+	install $(PathToSigViewer)/bin/release/sigviewer $(DESTDIR)$(bindir)
+
+install_ttl2trig: bin/ttl2trig
+	install bin/ttl2trig $(DESTDIR)$(bindir)
+
+install_headers: biosig-dev.h biosig.h biosig2.h gdftime.h physicalunits.h
+	install -d 			$(DESTDIR)$(includedir)
+	install $?		    	$(DESTDIR)$(includedir)
+
+install_libbiosig: install_libbiosig.$(DLEXT) install_libbiosig.a
+
+install_libbiosig.a: libbiosig.a libphysicalunits.a libbiosig.pc
+	install -d 			$(DESTDIR)$(libdir)/pkgconfig/
+	install libbiosig.a		$(DESTDIR)$(libdir)
+	install libphysicalunits.a 	$(DESTDIR)$(libdir)
+	install -m 0644 libbiosig.pc	$(DESTDIR)$(libdir)/pkgconfig/
+
+install_libbiosig.$(DLEXT): $(DLPRE)biosig$(FULLDLEXT)
+	install -d 			$(DESTDIR)$(DLDIR)/pkgconfig/
+	install $(DLPRE)biosig$(FULLDLEXT)  $(DESTDIR)$(DLDIR)/$(DLPRE)biosig$(FULLDLEXT)
+ifneq (Darwin,$(shell uname))
+	cd $(DESTDIR)$(DLDIR) && ln -sf $(DLPRE)biosig$(FULLDLEXT) $(DLPRE)biosig.$(DLEXT)
+endif
+	-ldconfig
+
+install: install_libbiosig.$(DLEXT) install_libbiosig.a install_headers install_tools
+
+install-strip: install
+	-strip -x $(DESTDIR)$(libdir)/libbiosig.a
+	-strip -x $(DESTDIR)$(libdir)/libphysicalunits.a
+	-strip -x $(DESTDIR)$(libdir)/$(DLPRE)biosig$(FULLDLEXT)
+
+install_tools: tools doc/save2gdf.1
+	install -d 			$(DESTDIR)$(bindir)
+	install ${BIN_OBJECTS}		$(DESTDIR)$(bindir)
+	install heka2itx		$(DESTDIR)$(bindir)
+	install rec2bin			$(DESTDIR)$(bindir)
+	install bin2rec			$(DESTDIR)$(bindir)
+	install save2aecg 		$(DESTDIR)$(bindir)
+	install save2scp  		$(DESTDIR)$(bindir)
+	mkdir -p  			$(DESTDIR)$(mandir)/man1
+	install doc/*.1  		$(DESTDIR)$(mandir)/man1
+	#install libbiosig.man 		$(mandir)
+	#$(MAKE)  install_sigviewer
+	#$(MAKE)  install_octave
+
+uninstall_tools:
+	${RM} $(addprefix $(DESTDIR)$(bindir)/,$(BIN_OBJECTS))
+	${RM} $(DESTDIR)$(bindir)/{heka2itx,bin2rec,rec2bin,save2aecg,save2scp}
+	${RM} $(addprefix $(DESTDIR)$(mandir)/man1/,$(addsuffix .1,$(BIN_OBJECTS)))
+	${RM} $(DESTDIR)$(mandir)/man1/{heka2itx,bin2rec,rec2bin,save2aecg,save2scp}.1
+
+### Install mexbiosig for Octave
+install_mexbiosig install_octave: mex/mexbiosig-$(BIOSIG_VERSION).src.tar.gz
+	@OCTAVE@ --no-gui --eval "pkg install $<"
+
+uninstall_mexbiosig:
+	-@OCTAVE@ --no-gui --eval "pkg uninstall mexbiosig"
+
+
+### Install mexbiosig for Matlab and Octave
+install_mex:
+	$(MAKE) -C mex install
+
+uninstall_mex:
+	$(MAKE) -C mex uninstall
+
+uninstall remove: uninstall_mexbiosig uninstall_tools
+	-$(DELETE) $(DESTDIR)$(bindir)/ttl2trig
+	#-$(DELETE) $(DESTDIR)$(bindir)/rec2bin
+	#-$(DELETE) $(DESTDIR)$(bindir)/bin2rec
+	-$(DELETE) $(DESTDIR)$(bindir)/sigviewer
+	-$(DELETE) $(DESTDIR)$(bindir)/eventcodes.txt
+	-$(DELETE) $(DESTDIR)$(includedir)/biosig.h
+	-$(DELETE) $(DESTDIR)$(includedir)/biosig-dev.h
+	-$(DELETE) $(DESTDIR)$(includedir)/biosig2.h
+	-$(DELETE) $(DESTDIR)$(includedir)/gdftime.h
+	-$(DELETE) $(DESTDIR)$(includedir)/physicalunits.h
+	-$(DELETE) $(DESTDIR)$(libdir)/libbiosig.*
+	-$(DELETE) $(DESTDIR)$(libdir)/libbiosig${SONAMEVERSION}.*
+	-$(DELETE) $(DESTDIR)$(libdir)/libphysicalunits.*
+	-$(DELETE) $(DESTDIR)$(libdir)/pkgconfig/libbiosig.pc
+	-ldconfig
+
+
+#############################################################
+#	Testing
+#############################################################
+testtms: $(DATA_DIR)t1.scp
+#	./save2gdf -V8 ~/data/test/tms32/small_test.float32.log
+	./save2gdf -f=TMSi $(DATA_DIR)t1.scp $(TEMP_DIR)t2.log
+	cat $(TEMP_DIR)t2.log
+
+fetchdata: $(TEMP_DIR)Osas2002plusQRS.edf $(DATA_DIR)Newtest17-2048.bdf $(TEMP_DIR)SC4001EC-Hypnogram.edf
+
+$(TEMP_DIR)scp/redred/PFE103.scp:
+	# scp example data sets
+	#wget  -q -P$(DATA_DIR) http://www.openecg.net/ECGsamples.zip
+	#wget  -q -P$(DATA_DIR) http://www.openecg.net/ECGsamplesc.zip
+	unzip -u $(DATA_DIR)ECGsamples.zip "scp*.zip" -d $(TEMP_DIR)
+	unzip -u $(DATA_DIR)ECGsamplesc.zip "scp*.zip" -d $(TEMP_DIR)
+	mkdir -p $(TEMP_DIR)scp/high
+	mkdir -p $(TEMP_DIR)scp/highc
+	mkdir -p $(TEMP_DIR)scp/redred
+	mkdir -p $(TEMP_DIR)scp/redredc
+	unzip -u $(TEMP_DIR)scp_high.zip -d $(TEMP_DIR)scp/high
+	unzip -u $(TEMP_DIR)scp_highc.zip -d $(TEMP_DIR)scp/highc
+	unzip -u $(TEMP_DIR)scp_redred.zip -d $(TEMP_DIR)scp/redred
+	unzip -u $(TEMP_DIR)scp_redredc.zip -d $(TEMP_DIR)scp/redredc
+	rm -rf $(TEMP_DIR)ECGsamples*.zip
+	rm -rf $(TEMP_DIR)scp*.zip
+
+$(DATA_DIR)t1.scp: $(TEMP_DIR)scp/redred/PFE103.scp
+	$(COPY) "$<" "$@"
+	touch "$@"
+
+#"$(DATA_DIR)aECG Release 1 Schema and Example.zip":
+$(DATA_DIR)2003-12\ Schema/example/Example\ aECG.xml:
+	# HL7aECG example data set
+	wget -q -P$(DATA_DIR) https://www.hl7.org/documentcenter/public/wg/rcrim/annecg/aECG%20Release%201%20Schema%20and%20Example.zip
+	unzip -u $(DATA_DIR)"aECG Release 1 Schema and Example.zip" -d $(DATA_DIR)
+
+$(TEMP_DIR)t1.hl7: $(DATA_DIR)2003-12\ Schema/example/Example\ aECG.xml
+	$(COPY) "$<" "$@"
+	#rm -rf "$(TEMP_DIR)aECG Release 1 Schema and Example.zip"
+	#rm -rf "$(TEMP_DIR)2003-12 Schema"
+
+$(TEMP_DIR)Osas2002plusQRS.edf:
+	# EDF+ example data set
+	wget -q -P$(TEMP_DIR) http://www.edfplus.info/downloads/files/osas.zip
+	unzip -u "$(TEMP_DIR)osas.zip"  -d $(TEMP_DIR)
+
+$(TEMP_DIR)SC4001EC-Hypnogram.edf:
+	wget -q -P$(TEMP_DIR) https://www.physionet.org/files/sleep-edfx/1.0.0/sleep-cassette/SC4001EC-Hypnogram.edf
+
+$(DATA_DIR)t1.edf: $(TEMP_DIR)Osas2002plusQRS.edf
+	$(COPY) "$<" "$@"
+	touch "$@"
+
+asc: save2gdf
+	./save2gdf -f=ASCII t0.xxx $(TEMP_DIR)t1.asc
+
+bin: save2gdf
+	./save2gdf -f=BIN t0.xxx $(TEMP_DIR)t1.bin
+
+testjson: save2gdf  $(DATA_DIR)t1.edf
+	./save2gdf -JSON t0.xxx |tee $(TEMP_DIR)t1.xxx.json
+	./save2gdf -JSON  $(TEMP_DIR)t1.edf |tee $(TEMP_DIR)t1.edf.json
+
+testbin: save2gdf $(DATA_DIR)t1.edf
+	./save2gdf -f=BIN $(DATA_DIR)t1.edf $(TEMP_DIR)t1.hdr
+	./save2gdf -f=BIN $(TEMP_DIR)t1.hdr $(TEMP_DIR)t2.hdr
+	./save2gdf -f=GDF $(TEMP_DIR)t2.hdr $(TEMP_DIR)t2.gdf
+
+testedf: save2gdf $(TEMP_DIR)Osas2002plusQRS.edf $(TEMP_DIR)SC4001EC-Hypnogram.edf
+	./save2gdf -f=GDF $(TEMP_DIR)Osas2002plusQRS.edf $(TEMP_DIR)Osas2002plusQRS.gdf
+	./save2gdf -JSON $(TEMP_DIR)Osas2002plusQRS.edf | json_pp
+	./save2gdf -JSON $(TEMP_DIR)SC4001EC-Hypnogram.edf | json_pp
+
+testscp: $(DATA_DIR)t1.scp save2gdf
+	# test converting SCP data
+	./save2gdf -f=HL7 "$<" $(TEMP_DIR)t1.scp.hl7
+	./save2gdf -f=GDF $(TEMP_DIR)t1.scp.hl7 $(TEMP_DIR)t1.scp.hl7.gdf
+	./save2gdf -f=SCP $(TEMP_DIR)t1.scp.hl7.gdf $(TEMP_DIR)t1.scp.hl7.gdf.scp
+	./save2gdf -f=GDF $(TEMP_DIR)t1.scp.hl7.gdf.scp $(TEMP_DIR)t1.scp.hl7.gdf.scp.gdf
+	./save2gdf -f=HL7 $(TEMP_DIR)t1.scp.hl7.gdf.scp.gdf $(TEMP_DIR)t1.scp.hl7.gdf.scp.gdf.hl7
+	./save2gdf -f=SCP $(TEMP_DIR)t1.scp.hl7.gdf.scp.gdf.hl7 $(TEMP_DIR)t1.scp.hl7.gdf.scp.gdf.hl7.scp
+	./save2gdf -f=GDF "$<" $(TEMP_DIR)t1.scp.gdf
+	./save2gdf -f=HL7 $(TEMP_DIR)t1.scp.gdf $(TEMP_DIR)t1.scp.gdf.hl7
+	./save2gdf -f=SCP $(TEMP_DIR)t1.scp.gdf.hl7 $(TEMP_DIR)t1.scp.gdf.hl7.scp
+	./save2gdf -f=HL7 $(TEMP_DIR)t1.scp.gdf.hl7.scp $(TEMP_DIR)t1.scp.gdf.hl7.scp.hl7
+	./save2gdf -f=GDF $(TEMP_DIR)t1.scp.gdf.hl7.scp.hl7 $(TEMP_DIR)t1.scp.gdf.hl7.scp.hl7.gdf
+	./save2gdf -f=SCP $(TEMP_DIR)t1.scp.gdf.hl7.scp.hl7.gdf $(TEMP_DIR)t1.scp.gdf.hl7.scp.hl7.gdf.scp
+
+testscp2: $(DATA_DIR)t1.scp
+	find test/scp -iname '*.scp' -exec ./save2gdf -V0 {} /dev/null \;
+
+testscp3: $(DATA_DIR)t1.scp
+	find test/scp -iname '*.scp' -exec ./save2gdf -f=SCP3 -V0 {} {}.scp3  \;
+
+testhl7: $(TEMP_DIR)t1.hl7 save2gdf
+	# test converting HL7aECG data
+	./save2gdf -f=GDF "$<" $(TEMP_DIR)t1.hl7.gdf
+	./save2gdf -f=SCP $(TEMP_DIR)t1.hl7.gdf $(TEMP_DIR)t1.hl7.gdf.scp
+	./save2gdf -f=HL7 $(TEMP_DIR)t1.hl7.gdf.scp $(TEMP_DIR)t1.hl7.gdf.scp.hl7
+	./save2gdf -f=SCP $(TEMP_DIR)t1.hl7.gdf.scp.hl7 $(TEMP_DIR)t1.hl7.gdf.scp.hl7.scp
+	./save2gdf -f=GDF $(TEMP_DIR)t1.hl7.gdf.scp.hl7.scp $(TEMP_DIR)t1.hl7.gdf.scp.hl7.scp.gdf
+	./save2gdf -f=HL7 $(TEMP_DIR)t1.hl7.gdf.scp.hl7.scp.gdf $(TEMP_DIR)t1.hl7.gdf.scp.hl7.scp.gdf.hl7
+	./save2gdf -f=SCP "$<" $(TEMP_DIR)t1.hl7.scp
+	./save2gdf -f=GDF $(TEMP_DIR)t1.hl7.scp $(TEMP_DIR)t1.hl7.scp.gdf
+	./save2gdf -f=HL7 $(TEMP_DIR)t1.hl7.scp.gdf $(TEMP_DIR)t1.hl7.scp.gdf.hl7
+	./save2gdf -f=GDF $(TEMP_DIR)t1.hl7.scp.gdf.hl7 $(TEMP_DIR)t1.hl7.scp.gdf.hl7.gdf
+	./save2gdf -f=SCP $(TEMP_DIR)t1.hl7.scp.gdf.hl7.gdf $(TEMP_DIR)t1.hl7.scp.gdf.hl7.gdf.scp
+	./save2gdf -f=HL7 $(TEMP_DIR)t1.hl7.scp.gdf.hl7.gdf.scp $(TEMP_DIR)t1.hl7.scp.gdf.hl7.gdf.scp.hl7
+
+test: $(DATA_DIR)t1.scp save2scp save2aecg save2gdf
+	# biosig4python
+	# includes test for on-the-fly compression and decompression
+	./save2gdf -z  $(DATA_DIR)t1.scp        $(TEMP_DIR)t1.scp.gdf
+	./save2gdf -f=SCP -z 	$(DATA_DIR)t1.scp        $(TEMP_DIR)t1.scp.scp
+	./save2gdf -f=HL7 -z	$(DATA_DIR)t1.scp        $(TEMP_DIR)t1.scp.hl7
+	./save2gdf 	$(TEMP_DIR)t1.scp.gdf.gz $(TEMP_DIR)t1.scp.gdf.gdf
+	./save2gdf 	$(TEMP_DIR)t1.scp.scp.gz $(TEMP_DIR)t1.scp.scp.gdf
+	./save2gdf 	$(TEMP_DIR)t1.scp.hl7.gz $(TEMP_DIR)t1.scp.hl7.gdf
+	./save2gdf -f=SCP 	$(TEMP_DIR)t1.scp.gdf.gz $(TEMP_DIR)t1.scp.gdf.scp
+	./save2gdf -f=SCP 	$(TEMP_DIR)t1.scp.scp.gz $(TEMP_DIR)t1.scp.scp.scp
+	./save2gdf -f=SCP 	$(TEMP_DIR)t1.scp.hl7.gz $(TEMP_DIR)t1.scp.hl7.scp
+	./save2gdf -f=HL7	$(TEMP_DIR)t1.scp.gdf.gz $(TEMP_DIR)t1.scp.gdf.hl7
+	./save2gdf -f=HL7	$(TEMP_DIR)t1.scp.scp.gz $(TEMP_DIR)t1.scp.scp.hl7
+	./save2gdf -f=HL7	$(TEMP_DIR)t1.scp.hl7.gz $(TEMP_DIR)t1.scp.hl7.hl7
+	# python test0/test.py
+	./biosig2gdf  $(DATA_DIR)t1.scp | md5sum
+
+zip: $(DATA_DIR)t1.scp save2gdf
+	# test for on-the-fly compression and decompression
+	# on-the-fly compression of output file
+	./save2gdf -z -f=GDF $(DATA_DIR)t1.scp $(TEMP_DIR)t1.gdf
+	./save2gdf -z -f=GDF1 $(DATA_DIR)t1.scp $(TEMP_DIR)t1.gd1
+	./save2gdf -z -f=EDF $(DATA_DIR)t1.scp $(TEMP_DIR)t1.edf
+	./save2gdf -z -f=BDF $(DATA_DIR)t1.scp $(TEMP_DIR)t1.bdf
+	./save2gdf -z -f=SCP $(DATA_DIR)t1.scp $(TEMP_DIR)t1.scp
+	./save2gdf -z -f=CFWB $(DATA_DIR)t1.scp $(TEMP_DIR)t1.cfw
+	./save2gdf -z -f=MFER $(DATA_DIR)t1.scp $(TEMP_DIR)t1.mwf
+	./save2gdf -z -f=HL7 $(DATA_DIR)t1.scp $(TEMP_DIR)t1.hl7
+
+	gzip -c $(DATA_DIR)t1.scp >$(TEMP_DIR)t1.scp.gz
+	# on-the-fly decompression of input file
+	./save2gdf -f=GDF $(TEMP_DIR)t1.scp.gz $(TEMP_DIR)t1.gdf
+	./save2gdf -f=EDF $(TEMP_DIR)t1.scp.gz $(TEMP_DIR)t1.edf
+	./save2gdf -f=BDF $(TEMP_DIR)t1.scp.gz $(TEMP_DIR)t1.bdf
+	./save2gdf -f=SCP $(TEMP_DIR)t1.scp.gz $(TEMP_DIR)t1.scp
+	./save2gdf -f=HL7 $(TEMP_DIR)t1.scp.gz $(TEMP_DIR)t1.hl7
+	./save2gdf -f=MFER $(TEMP_DIR)t1.scp.gz $(TEMP_DIR)t1.mwf
+	./save2gdf -f=CFWB $(TEMP_DIR)t1.scp.gz $(TEMP_DIR)t1.cfw
+
+test6: $(DATA_DIR)t1.scp save2gdf
+	$(COPY) $(DATA_DIR)t1.scp $(TEMP_DIR)t0.xxx
+	#test7: $(DATA_DIR)t1.edf save2gdf
+	#$(COPY) $(DATA_DIR)t1.edf $(TEMP_DIR)t0.xxx
+	./save2gdf -z -f=GDF1 $(TEMP_DIR)t0.xxx $(TEMP_DIR)t1.gd1
+	./save2gdf -z -f=GDF $(TEMP_DIR)t0.xxx $(TEMP_DIR)t1.gdf
+	./save2gdf -z -f=EDF $(TEMP_DIR)t0.xxx $(TEMP_DIR)t1.edf
+	./save2gdf -z -f=BDF $(TEMP_DIR)t0.xxx $(TEMP_DIR)t1.bdf
+	./save2gdf -z -f=SCP $(TEMP_DIR)t0.xxx $(TEMP_DIR)t1.scp
+	./save2gdf    -f=HL7 $(TEMP_DIR)t0.xxx $(TEMP_DIR)t1.hl7   # -z not supported for HL7
+	gzip -f $(TEMP_DIR)t1.hl7
+	./save2gdf -z -f=CFWB $(TEMP_DIR)t0.xxx $(TEMP_DIR)t1.cfw
+	./save2gdf -z -f=MFER $(TEMP_DIR)t0.xxx $(TEMP_DIR)t1.mwf
+	./save2gdf -f=BVA $(TEMP_DIR)t0.xxx $(TEMP_DIR)t1.bva
+	./save2gdf -f=GDF1 $(TEMP_DIR)t1.gd1.gz $(TEMP_DIR)t2.gd1.gd1
+	./save2gdf -f=GDF $(TEMP_DIR)t1.gd1.gz $(TEMP_DIR)t2.gd1.gdf
+	./save2gdf -f=EDF $(TEMP_DIR)t1.gd1.gz $(TEMP_DIR)t2.gd1.edf
+	./save2gdf -f=BDF $(TEMP_DIR)t1.gd1.gz $(TEMP_DIR)t2.gd1.bdf
+	./save2gdf -f=SCP $(TEMP_DIR)t1.gd1.gz $(TEMP_DIR)t2.gd1.scp
+	./save2gdf -f=HL7 $(TEMP_DIR)t1.gd1.gz $(TEMP_DIR)t2.gd1.hl7
+	./save2gdf -f=CFWB $(TEMP_DIR)t1.gd1.gz $(TEMP_DIR)t2.gd1.cfw
+	./save2gdf -f=GDF1 $(TEMP_DIR)t1.gdf.gz $(TEMP_DIR)t2.gdf.gd1
+	./save2gdf -f=GDF $(TEMP_DIR)t1.gdf.gz $(TEMP_DIR)t2.gdf.gdf
+	./save2gdf -f=EDF $(TEMP_DIR)t1.gdf.gz $(TEMP_DIR)t2.gdf.edf
+	./save2gdf -f=BDF $(TEMP_DIR)t1.gdf.gz $(TEMP_DIR)t2.gdf.bdf
+	./save2gdf -f=SCP $(TEMP_DIR)t1.gdf.gz $(TEMP_DIR)t2.gdf.scp
+	./save2gdf -f=HL7 $(TEMP_DIR)t1.gdf.gz $(TEMP_DIR)t2.gdf.hl7
+	./save2gdf -f=CFWB $(TEMP_DIR)t1.gdf.gz $(TEMP_DIR)t2.gdf.cfw
+	./save2gdf -f=GDF1 $(TEMP_DIR)t1.edf.gz $(TEMP_DIR)t2.edf.gd1
+	./save2gdf -f=GDF $(TEMP_DIR)t1.edf.gz $(TEMP_DIR)t2.edf.gdf
+	./save2gdf -f=EDF $(TEMP_DIR)t1.edf.gz $(TEMP_DIR)t2.edf.edf
+	./save2gdf -f=BDF $(TEMP_DIR)t1.edf.gz $(TEMP_DIR)t2.edf.bdf
+	./save2gdf -f=SCP $(TEMP_DIR)t1.edf.gz $(TEMP_DIR)t2.edf.scp
+	./save2gdf -f=HL7 $(TEMP_DIR)t1.edf.gz $(TEMP_DIR)t2.edf.hl7
+	./save2gdf -f=CFWB $(TEMP_DIR)t1.edf.gz $(TEMP_DIR)t2.edf.cfw
+	./save2gdf -f=GDF1 $(TEMP_DIR)t1.bdf.gz $(TEMP_DIR)t2.bdf.gd1
+	./save2gdf -f=GDF $(TEMP_DIR)t1.bdf.gz $(TEMP_DIR)t2.bdf.gdf
+	./save2gdf -f=EDF $(TEMP_DIR)t1.bdf.gz $(TEMP_DIR)t2.bdf.edf
+	./save2gdf -f=BDF $(TEMP_DIR)t1.bdf.gz $(TEMP_DIR)t2.bdf.bdf
+	./save2gdf -f=SCP $(TEMP_DIR)t1.bdf.gz $(TEMP_DIR)t2.bdf.scp
+	./save2gdf -f=HL7 $(TEMP_DIR)t1.bdf.gz $(TEMP_DIR)t2.bdf.hl7
+	./save2gdf -f=CFWB $(TEMP_DIR)t1.bdf.gz $(TEMP_DIR)t2.bdf.cfw
+	./save2gdf -f=GDF1 $(TEMP_DIR)t1.scp.gz $(TEMP_DIR)t2.scp.gd1
+	./save2gdf -f=GDF $(TEMP_DIR)t1.scp.gz $(TEMP_DIR)t2.scp.gdf
+	./save2gdf -f=EDF $(TEMP_DIR)t1.scp.gz $(TEMP_DIR)t2.scp.edf
+	./save2gdf -f=BDF $(TEMP_DIR)t1.scp.gz $(TEMP_DIR)t2.scp.bdf
+	./save2gdf -f=SCP $(TEMP_DIR)t1.scp.gz $(TEMP_DIR)t2.scp.scp
+	./save2gdf -f=HL7 $(TEMP_DIR)t1.scp.gz $(TEMP_DIR)t2.scp.hl7
+	./save2gdf -f=CFWB $(TEMP_DIR)t1.scp.gz $(TEMP_DIR)t2.scp.cfw
+	./save2gdf -f=GDF1 $(TEMP_DIR)t1.hl7.gz $(TEMP_DIR)t2.hl7.gd1
+	./save2gdf -f=GDF $(TEMP_DIR)t1.hl7.gz $(TEMP_DIR)t2.hl7.gdf
+	./save2gdf -f=EDF $(TEMP_DIR)t1.hl7.gz $(TEMP_DIR)t2.hl7.edf
+	./save2gdf -f=BDF $(TEMP_DIR)t1.hl7.gz $(TEMP_DIR)t2.hl7.bdf
+	./save2gdf -f=SCP $(TEMP_DIR)t1.hl7.gz $(TEMP_DIR)t2.hl7.scp
+	./save2gdf -f=HL7 $(TEMP_DIR)t1.hl7.gz $(TEMP_DIR)t2.hl7.hl7
+	./save2gdf -f=CFWB $(TEMP_DIR)t1.hl7.gz $(TEMP_DIR)t2.hl7.cfw
+	./save2gdf -f=GDF1 $(TEMP_DIR)t1.cfw.gz $(TEMP_DIR)t2.cfw.gd1
+	./save2gdf -f=GDF $(TEMP_DIR)t1.cfw.gz $(TEMP_DIR)t2.cfw.gdf
+	./save2gdf -f=EDF $(TEMP_DIR)t1.cfw.gz $(TEMP_DIR)t2.cfw.edf
+	./save2gdf -f=BDF $(TEMP_DIR)t1.cfw.gz $(TEMP_DIR)t2.cfw.bdf
+	./save2gdf -f=SCP $(TEMP_DIR)t1.cfw.gz $(TEMP_DIR)t2.cfw.scp
+	./save2gdf -f=HL7 $(TEMP_DIR)t1.cfw.gz $(TEMP_DIR)t2.cfw.hl7
+	./save2gdf -f=GDF1 $(TEMP_DIR)t1.mwf.gz $(TEMP_DIR)t2.mwf.gd1
+	./save2gdf -f=GDF $(TEMP_DIR)t1.mwf.gz $(TEMP_DIR)t2.mwf.gdf
+	./save2gdf -f=EDF $(TEMP_DIR)t1.mwf.gz $(TEMP_DIR)t2.mwf.edf
+	./save2gdf -f=BDF $(TEMP_DIR)t1.mwf.gz $(TEMP_DIR)t2.mwf.bdf
+	./save2gdf -f=SCP $(TEMP_DIR)t1.mwf.gz $(TEMP_DIR)t2.mwf.scp
+	./save2gdf -f=HL7 $(TEMP_DIR)t1.mwf.gz $(TEMP_DIR)t2.mwf.hl7
+
+$(DATA_DIR)Newtest17-2048.bdf : $(DATA_DIR)BDFtestfiles.zip
+	unzip -u "$<" -d $(DATA_DIR)
+
+testbdf : $(DATA_DIR)Newtest17-2048.bdf
+	./save2gdf -V4 "$<" | awk '/(NoChannels|NRec|Fs|Events\/Annotations):/ { print $$2 } '
+
+testpybdf : $(DATA_DIR)Newtest17-2048.bdf
+	$(PYTHON) python/demo2.py
+	$(PYTHON) python/demo2.py $(DATA_DIR)*-256.bdf
+	$(PYTHON) python/example.py $(DATA_DIR)*-256.bdf 256
+	$(PYTHON) python/example.py $(DATA_DIR)*-2048.bdf 2048
+
+$(DATA_DIR)BDFtestfiles.zip :
+	wget -P$(DATA_DIR) http://www.biosemi.com/download/BDFtestfiles.zip
+
+.PHONY: stat
+stat:
+	@echo 'TODO/FIXME:  ';
+	@grep -ri '\bTODO\b'  *.c *.h *.i t210/*.c t210/*.h |grep -v '\.svn' |wc -l;
+	@grep -ri '\bFIXME\b' *.c *.h *.i t210/*.c t210/*.h |grep -v '\.svn' |wc -l;
+
+test_physicalunits : units.i physicalunits.c physicalunits.h
+	gcc -D=TEST_PHYSDIMTABLE_PERFORMANCE -D=WITH_PTHREAD physicalunits.c -o test_physicalunits
+	./test_physicalunits
+	@echo '--- end of test_physicalunits ---'
+
+
+testcfs : $(DATA_DIR_CFS) save2gdf
+	-./save2gdf $(VERBOSE) $(DATA_DIR_CFS)BaseDemo/Actions.CFS
+	-./save2gdf $(VERBOSE) $(DATA_DIR_CFS)BaseDemo/example.cfs
+	-./save2gdf $(VERBOSE) $(DATA_DIR_CFS)BaseDemo/Leak.cfs
+	-./save2gdf $(VERBOSE) $(DATA_DIR_CFS)BaseDemo/NAME_0AA.cfs
+	-./save2gdf $(VERBOSE) $(DATA_DIR_CFS)BaseDemo/SCANexam.CFS
+	-./save2gdf $(VERBOSE) $(DATA_DIR_CFS)BaseDemo/TEST.cfs
+	-./save2gdf $(VERBOSE) $(DATA_DIR_CFS)BaseDemo/TRIAL0AA.cfs
+	-./save2gdf $(VERBOSE) $(DATA_DIR_CFS)100118s1AB.dat
+	-./save2gdf $(VERBOSE) $(DATA_DIR_CFS)100121s1AF.dat
+	-./save2gdf $(VERBOSE) $(DATA_DIR_CFS)Signal/1_23456.000.cfs
+	-./save2gdf $(VERBOSE) $(DATA_DIR_CFS)Signal/1_23456.001.cfs
+	-./save2gdf $(VERBOSE) $(DATA_DIR_CFS)Signal/1_23456.002.cfs
+	-./save2gdf $(VERBOSE) $(DATA_DIR_CFS)Signal/1_23456.LAST.cfs
+	-./save2gdf $(VERBOSE) $(DATA_DIR_CFS)/1617K2AA.DAT
+

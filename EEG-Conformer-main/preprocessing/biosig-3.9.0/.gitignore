@@ -1,0 +1,54 @@
+# backup files
+*~
+# ignore precompiled files
+# ignore object files
+*.i
+*.o
+*.obj
+*.o64
+# ignore library files
+*.a
+*.so*
+*.dll
+*.def
+*.png
+*.mex*
+# ignore executables
+biosig4c++/save2gdf
+biosig4c++/biosig2gdf
+biosig4c++/physicalunits
+biosig4c++/biosig_fhir
+biosig4c++/mma/sload
+biosig4c++/mma/sload.exe
+biosig4c++/R/biosig.Rcheck/
+biosig4c++/python/Biosig.egg-info/
+# ignore mex files
+biosig4c++/mex/mexSOPEN.cpp
+#
+biosig4c++/java/*.class
+biosig4c++/java/*.h
+#
+biosig4c++/magic/file.list
+biosig4c++/magic/*.mgc
+#
+# autoconf generated files
+autom4te.cache/
+config.log
+config.status
+config.sub
+configure
+biosig4c++/python/setup.py
+biosig4c++/R/DESCRIPTION
+Makefile
+biosig4c++/CMakeCache.txt
+biosig4c++/CMakeFiles
+# 
+*.exe
+*.deb
+*.tar.gz
+# MacPorts stuff
+biosig4c++/macports/PortIndex
+biosig4c++/macports/PortIndex.quick
+biosig4c++/macports/Portfile-libbiosig.diff
+biosig4c++/macports/biosig4c++-*.src.tar.gz*
+biosig4c++/build/*

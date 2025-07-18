@@ -1,0 +1,164 @@
+####### Main Makefile for building the various biosig tools ####################
+###
+###  Copyright (C) 2010-2020 Alois Schloegl <alois.schloegl@gmail.com>
+###  This file is part of the "BioSig for C/C++" repository
+###  (biosig4c++) at http://biosig.sf.net/
+###
+################################################################################
+
+exec_prefix ?= $(prefix)
+
+first :: lib tools
+
+java: lib
+	$(MAKE) -C biosig4c++/java
+
+lib:
+	$(MAKE) -C biosig4c++ lib
+
+tools: lib
+	$(MAKE) -C biosig4c++ tools
+
+mma mathematica: lib
+	$(MAKE) -C biosig4c++/mma
+
+mex4m matlab: lib
+	$(MAKE) -C biosig4c++/mex mex4m
+
+R: lib
+	$(MAKE) -C biosig4c++/R
+
+install ::
+	$(MAKE) -C biosig4c++ install
+	install -d $(DESTDIR)@prefix@/share/biosig/matlab
+	cp -r biosig4matlab/* $(DESTDIR)@prefix@/share/biosig/matlab/
+	-rm -rf $(DESTDIR)@prefix@/share/biosig/matlab/maybe-missing
+
+uninstall ::
+	$(MAKE) -C biosig4c++ uninstall
+	-rm -rf $(DESTDIR)@prefix@/share/biosig
+
+clean ::
+	-$(MAKE) -C biosig4c++/mma clean
+	$(MAKE) -C biosig4c++ clean
+	-rm mexbiosig*.src.tar.gz
+	-rm biosig4octave*.src.tar.gz
+
+distclean : clean
+        # also configure.ac for list of files
+	-rm config.log
+	-rm config.status
+	-rm Makefile biosig4c++/Makefile biosig4c++/*/Makefile \
+		biosig4c++/python/setup.py \
+		biosig4c++/R/DESCRIPTION
+
+ifneq (:,@JAVA@)
+ifneq (:,@JAVAC@)
+first :: lib
+	-$(MAKE) -C biosig4c++/java
+endif
+clean ::
+	-$(MAKE) -C biosig4c++/java clean
+test ::
+	-$(MAKE) -C biosig4c++/java test
+endif
+
+ifneq (:,@MATHEMATICA@)
+first :: lib
+	$(MAKE) -C biosig4c++/mma
+install ::
+	-$(MAKE) -C biosig4c++/mma install
+uninstall ::
+	-$(MAKE) -C biosig4c++/mma uninstall
+endif
+
+ifneq (:,@MATLAB@)
+MATLAB_MEX := $(shell dirname @MATLAB@)/mex
+first ::
+	$(MAKE) -C biosig4c++/mex mex4m
+install ::
+	$(MAKE) -C biosig4c++/mex install
+uninstall ::
+	$(MAKE) -C biosig4c++/mex uninstall
+endif
+
+# source package mexbiosig and biosig4octave
+first :: biosig4octave
+mexbiosig ::
+	$(MAKE) -C biosig4c++ mexbiosig
+	ln -sf biosig4c++/mex/mexbiosig-@PACKAGE_VERSION@.src.tar.gz
+biosig4octave ::
+	$(MAKE) -C biosig4c++ biosig4octave
+	ln -sf biosig4c++/mex/biosig4octave-@PACKAGE_VERSION@.src.tar.gz
+
+ifneq (:,@OCTAVE@)
+ifneq (:,@MKOCTFILE@)
+BIOSIG_MEX_DIR = $(DESTDIR)$(shell octave-config -p LOCALOCTFILEDIR)/biosig
+BIOSIG_DIR     = $(DESTDIR)$(shell octave-config -p LOCALFCNFILEDIR)/biosig
+first ::
+	MKOCTFILE="@MKOCTFILE@" $(MAKE) -C biosig4c++/mex mex4o
+install ::
+	# mexbiosig
+	#-@OCTAVE@ --no-gui --eval "pkg install -global biosig4c++/mex/mexbiosig-@PACKAGE_VERSION@.src.tar.gz"
+	# *.mex
+	install -d $(BIOSIG_MEX_DIR)
+	install biosig4c++/mex/*.mex $(BIOSIG_MEX_DIR)
+	# biosig for octave and matlab
+	install -d $(BIOSIG_DIR)
+	cp -r biosig4matlab/*  $(BIOSIG_DIR)
+	-rm -rf $(BIOSIG_DIR)/maybe-missing
+
+uninstall ::
+	# mexbiosig
+	#-@OCTAVE@ --no-gui --eval "pkg uninstall -global mexbiosig"
+	# *.mex
+	-rm -rf $(BIOSIG_MEX_DIR)
+	# biosig for octave and matlab
+	-rm -rf $(BIOSIG_DIR)
+endif
+endif
+
+ifneq (:,@PHP@)
+first ::
+	-$(MAKE) -C biosig4c++/php
+install ::
+	-$(MAKE) -C biosig4c++/php install
+clean ::
+	-$(MAKE) -C biosig4c++/php clean
+endif
+
+ifneq (:,@PYTHON3@)
+first :: python
+python ::
+	-PYTHON=@PYTHON3@ $(MAKE) -C biosig4c++/python sdist
+	-$(foreach py, $(shell pyversions -i),  PYTHON=$(py) $(MAKE) -C biosig4c++/python; )
+	-$(foreach py, $(shell py3versions -i), PYTHON=$(py) $(MAKE) -C biosig4c++/python; )
+install ::
+	-PYTHON=@PYTHON3@ $(MAKE) -C biosig4c++/python install
+	-$(foreach py, $(shell pyversions -i),  PYTHON=$(py) $(MAKE) -C biosig4c++/python install; )
+	-$(foreach py, $(shell py3versions -i), PYTHON=$(py) $(MAKE) -C biosig4c++/python install; )
+uninstall ::
+	-@PYTHON3@ -m pip uninstall -y Biosig
+	-$(foreach py, $(shell pyversions -i),  $(py) -m pip uninstall -y Biosig;)
+	-$(foreach py, $(shell py3versions -i), $(py) -m pip uninstall -y Biosig;)
+clean ::
+	$(MAKE) -C biosig4c++/python clean
+endif
+
+ifneq (:,@R@)
+first ::
+	-$(MAKE) -C biosig4c++/R build
+install ::
+	-$(MAKE) -C biosig4c++/R install
+clean ::
+	-$(MAKE) -C biosig4c++/R clean
+endif
+
+all: first #win32 win64 #sigviewer #win32/sigviewer.exe win64/sigviewer.exe #biosig_client biosig_server mma java tcl perl php ruby #sigviewer
+
+#---- automatic remaking ---------------------------------------------------#
+#   https://www.gnu.org/software/autoconf/manual/autoconf-2.69/html_node/Automatic-Remaking.html#Automatic-Remaking
+#---------------------------------------------------------------------------#
+$(srcdir)/configure: configure.ac aclocal.m4
+	autoconf
+

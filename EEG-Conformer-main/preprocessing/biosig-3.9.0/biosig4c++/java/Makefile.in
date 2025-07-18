@@ -1,0 +1,37 @@
+####### Makefile for "BioSig for C/C++" #####################
+###
+###  Copyright (C) 2018-2020 Alois Schloegl <alois.schloegl@gmail.com>
+###  This file is part of the "BioSig for C/C++" repository
+###  (biosig4c++) at http://biosig.sf.net/
+###
+##############################################################
+
+### JNI ###
+# https://stackoverflow.com/questions/5963266/call-c-function-from-java
+
+JAVA_HOME ?= $(realpath $(dir $(realpath $(shell which @JAVAC@ )))/..)
+
+CLASS_PATH ?= $(JAVA_HOME)/bin
+
+libBiosig.so: Biosig.h Biosig.c
+	$(CXX) -shared -fPIC \
+		-I.. \
+		-I$(JAVA_HOME)/include \
+		-I$(JAVA_HOME)/include/$(shell uname -s | tr '[:upper:]' '[:lower:]') \
+		Biosig.c -L.. -lbiosig -o libBiosig.so
+
+Biosig.h: Biosig.class
+	@JAVAC@ -h . Biosig.java
+
+Biosig.class: Biosig.java
+	@JAVAC@ Biosig.java
+
+test: libBiosig.so
+	LD_LIBRARY_PATH=.. @JAVA@ -Djava.library.path=. Biosig "../data/Newtest17-256.bdf"
+
+clean: 
+	-rm *.h
+	-rm *.o 
+	-rm *.cxx 
+	-rm *.so
+
