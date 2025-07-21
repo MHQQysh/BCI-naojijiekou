@@ -1,0 +1,42 @@
+
+Testing on subject 1
+Subject: 1 Run: run-1 Test Acc: 0.6632 Kappa: 0.5509
+
+Testing on subject 2
+Subject: 2 Run: run-1 Test Acc: 0.2708 Kappa: 0.0278
+
+Testing on subject 3
+Subject: 3 Run: run-1 Test Acc: 0.6632 Kappa: 0.5509
+
+Testing on subject 4
+Subject: 4 Run: run-1 Test Acc: 0.3125 Kappa: 0.0833
+
+Testing on subject 5
+Subject: 5 Run: run-1 Test Acc: 0.3368 Kappa: 0.1157
+
+Testing on subject 6
+Subject: 6 Run: run-1 Test Acc: 0.3125 Kappa: 0.0833
+
+Testing on subject 7
+Subject: 7 Run: run-1 Test Acc: 0.5035 Kappa: 0.3380
+
+Testing on subject 8
+Subject: 8 Run: run-1 Test Acc: 0.6042 Kappa: 0.4722
+
+Testing on subject 9
+Subject: 9 Run: run-1 Test Acc: 0.6250 Kappa: 0.5000
+
+---------------------------------
+TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTest performance (acc & k-score):
+---------------------------------
+                     sub_1   sub_2   sub_3   sub_4   sub_5   sub_6   sub_7   sub_8   sub_9      average
+                     -----   -----   -----   -----   -----   -----   -----   -----   -----      -------
+Run 1: (acc %)   66.32   27.08   66.32   31.25   33.68   31.25   50.35   60.42   62.50      47.69   
+          (k-sco)   0.551   0.028   0.551   0.083   0.116   0.083   0.338   0.472   0.500      0.302   
+----------------------------------
+Average - all seeds (acc %): 47.69
+          (k-sco): 0.302
+
+Inference time: 0.00 ms per trial
+----------------------------------
+

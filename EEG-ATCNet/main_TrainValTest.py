@@ -371,7 +371,7 @@ def getModel(model_name, dataset_conf, from_logits = False):
 #%%
 def run():
     # Define dataset parameters
-    dataset = 'HGD' # Options: 'BCI2a','HGD', 'CS2R'
+    dataset = 'BCI2a' # Options: 'BCI2a','HGD', 'CS2R'
     
     if dataset == 'BCI2a': 
         in_samples = 1125
@@ -379,7 +379,9 @@ def run():
         n_sub = 9
         n_classes = 4
         classes_labels = ['Left hand', 'Right hand','Foot','Tongue']
-        data_path = os.path.expanduser('~') + '/BCI Competition IV/BCI Competition IV-2a/BCI Competition IV 2a mat/'
+        data_path = 'C:/Users/13613/Desktop/Naoji/EEG-ATCNet/data/'
+
+
     elif dataset == 'HGD': 
         in_samples = 1125
         n_channels = 44
@@ -410,11 +412,11 @@ def run():
                     'n_sub': n_sub, 'n_channels': n_channels, 'in_samples': in_samples,
                     'data_path': data_path, 'isStandard': True, 'LOSO': False}
     # Set training hyperparamters
-    train_conf = { 'batch_size': 64, 'epochs': 500, 'patience': 100, 'lr': 0.001,'n_train': 1,
+    train_conf = { 'batch_size': 4, 'epochs': 50, 'patience': 100, 'lr': 0.001,'n_train': 1,
                   'LearnCurves': True, 'from_logits': False, 'model':'ATCNet'}
            
     # Train the model
-    # train(dataset_conf, train_conf, results_path)
+    train(dataset_conf, train_conf, results_path)
 
     # Evaluate the model based on the weights saved in the '/results' folder
     model = getModel(train_conf.get('model'), dataset_conf)

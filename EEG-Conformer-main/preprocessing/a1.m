@@ -3,7 +3,7 @@
 % --- 1. 定义文件路径 ---
 
 file_path = 'C:\Users\13613\Desktop\Naoji\EEG-Conformer-main\preprocessing\BCICIV_2a_gdf\A01E.gdf'; 
-
+disp(['成功加载文件: ', file_path]);
 % 示例路径，请替换为你的实际路径
 
 
@@ -17,12 +17,6 @@ file_path = 'C:\Users\13613\Desktop\Naoji\EEG-Conformer-main\preprocessing\BCICI
 % H: 包含信号的头信息（header），是一个结构体
 try
     [signal_data, header_info] = sload(file_path);
-
-
-
-
-
-
 
 
 
@@ -52,12 +46,6 @@ try
         disp('通道标签 (Channel Labels):');
         disp(header_info.Label(1:min(5, end), :)); % 显示前5个通道标签
     end
-
-
-
-
-
-
 
 
 

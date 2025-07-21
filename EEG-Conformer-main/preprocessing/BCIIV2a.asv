@@ -5,7 +5,7 @@
 
 function data = getData(subject_index)
 
-subject_index = 1; % 1-9
+subject_index = 7; % 1-9
 
 %% T data
 % session_type = 'T'; % T and E
@@ -40,15 +40,15 @@ subject_index = 1; % 1-9
 
 % E data
 session_type = 'E';
-% dir_2 = ['BCICIV_2a_gdf\A0',num2str(subject_index),session_type,'.gdf'];
-dir_2= 'C:\Users\13613\Desktop\Naoji\EEG-Conformer-main\preprocessing\BCICIV_2a_gdf\A01E.gdf';
+dir_2 = ['C:\Users\13613\Desktop\Naoji\EEG-Conformer-main\preprocessing\BCICIV_2a_gdf\A0',num2str(subject_index),session_type,'.gdf'];
+% dir_2= 'C:\Users\13613\Desktop\Naoji\EEG-Conformer-main\preprocessing\BCICIV_2a_gdf\A01E.gdf';
 [s, HDR] = sload(dir_2);
 
 
 
 % Label 
 label = HDR.Classlabel;
-labeldir_2 = ['D:\Lab\MI\true_labels\A0',num2str(subject_index),session_type,'.mat'];
+labeldir_2 = ['C:\Users\13613\Desktop\Naoji\EEG-Conformer-main\preprocessing\input\Labels\true_labels_2a\A0',num2str(subject_index),session_type,'.mat'];
 load(labeldir_2);
 label_2 = classlabel;
 
@@ -92,12 +92,12 @@ fb_data = (data-eeg_mean)./eeg_std;
 % data = data_1;
 % label = label_1;
 % label = t_label + 1;
-% saveDir = ['D:\EEG_dataset\BCICIV_2a_mat\A0',num2str(subject_index),'T.mat'];
+saveDir = ['C:\Users\13613\Desktop\Naoji\EEG-Conformer-main\preprocessing\output\A0',num2str(subject_index),'T.mat'];
 % save(saveDir,'data','label');
 
 data = data_2;
 label = label_2;
-saveDir = ['BCICIV_2a_mat',num2str(subject_index),'E.mat'];
+% saveDir = ['BCICIV_2a_mat',num2str(subject_index),'E.mat'];
 save(saveDir,'data','label');
 
 end

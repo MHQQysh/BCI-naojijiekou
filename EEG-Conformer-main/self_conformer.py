@@ -224,7 +224,7 @@ class ExP():
         self.nSub = nsub
 
         self.start_epoch = 0
-        self.root = f'D:/EEG_Dataset/asynchronous/BCICIV_2a_mat/{cha_tag}/'
+        self.root = 'C:\\Users\\13613\\Desktop\\Naoji\\EEG-Conformer-main\\preprocessing\\output\\'
 
         self.log_write = open("./results/log_subject%d.txt" % self.nSub, "w")
 
@@ -279,10 +279,10 @@ class ExP():
         # train data
         self.total_data = scipy.io.loadmat(self.root + 'A0%dT.mat' % self.nSub)
         self.train_data = self.total_data['data']
-        self.train_label = self.total_data['labels']
+        self.train_label = self.total_data['label']
 
         # paper method shape is like (1000, 22, 288), after transpose (288,22,1000)
-        # self.train_data = np.transpose(self.train_data, (2, 1, 0))
+        self.train_data = np.transpose(self.train_data, (2, 1, 0))
         self.train_data = np.expand_dims(self.train_data, axis=1)
         print(self.train_data.shape)
         print(self.train_label.shape)
@@ -299,9 +299,9 @@ class ExP():
         # test data
         self.test_tmp = scipy.io.loadmat(self.root + 'A0%dE.mat' % self.nSub)
         self.test_data = self.test_tmp['data']
-        self.test_label = self.test_tmp['labels']
+        self.test_label = self.test_tmp['label']
 
-        # self.test_data = np.transpose(self.test_data, (2, 1, 0))
+        self.test_data = np.transpose(self.test_data, (2, 1, 0))
         self.test_data = np.expand_dims(self.test_data, axis=1)
         self.test_label = np.transpose(self.test_label)
 
@@ -421,7 +421,7 @@ class ExP():
 def main():
     best = 0
     aver = 0
-    result_write = open("./results/sub_result.txt", "w")
+    result_write = open("./ysh_results/sub_result.txt", "w")
 
     tmin = 0
     tmax = 4
@@ -470,6 +470,9 @@ def main():
     result_write.write('**The average Best accuracy is: ' + str(best) + "\n")
     result_write.write('The average Aver accuracy is: ' + str(aver) + "\n")
     result_write.close()
+
+
+
 
 
 if __name__ == "__main__":
